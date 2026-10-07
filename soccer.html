@@ -381,7 +381,8 @@ function normalise(raw, cut){
     if (ord > cutOrd) continue;
     const t = String((k.type && k.type.text) || "").toLowerCase();
     let kind = "other";
-    if (/own goal/.test(t)) kind = "og";
+    if (k.shootout) kind = k.scoringPlay ? "so-goal" : "so-miss";
+    else if (/own goal/.test(t)) kind = "og";
     else if (k.scoringPlay || /^goal|penalty - scored/.test(t)) kind = "goal";
     else if (/penalty/.test(t) && /miss|saved/.test(t)) kind = "penmiss";
     else if (/red card/.test(t)) kind = "red";
@@ -491,7 +492,9 @@ async function getJSON(url){
   if (!r.ok) throw new Error("HTTP " + r.status);
   return r.json();
 }
+let lastMiss = 0;
 async function discover(){
+  if (Date.now() - lastMiss < 300000) return null;      // nothing found recently: look again in 5 minutes
   const leagues = P.has("league") ? [cfg.league] : [cfg.league, ...FALLBACK_LEAGUES.filter(l => l !== cfg.league)];
   for (const lg of leagues){
     try{
@@ -502,6 +505,7 @@ async function discover(){
       }
     }catch(e){}
   }
+  lastMiss = Date.now();
   return null;
 }
 function statusOf(raw){
@@ -651,6 +655,8 @@ function runEngine(m, silent){
       fire("yellow", { cls:"yellow", color:team.color, kicker:`Yellow card, ${team.name}`, head:`${who} ${e.label}` });
     } else if (e.kind === "penmiss" && team){
       fire("goal", { big:true, color:team.color, kicker:`Penalty ${/saved/i.test(e.typeText + e.text) ? "saved" : "missed"}`, head:`${who} ${e.label}` });
+    } else if ((e.kind === "so-goal" || e.kind === "so-miss") && team){
+      fire("goal", { color:team.color, kicker:`Shootout, ${team.name}`, head:`${who} ${e.kind === "so-goal" ? "scores" : /saved/i.test(e.typeText + e.text) ? "is saved" : "misses"}` });
     } else if (e.kind === "sub" && team){
       const out = e.p2 ? m.lastOf(e.p2.id, e.p2.displayName) : "";
       fire("subs", { color:team.color, kicker:`Substitution, ${team.name} ${e.label}`, head:`${who} on, ${out} off` });
@@ -831,12 +837,17 @@ emit = function(a){ a.stamp = feedStamp; _emit(a); };
 
 /* ---------------- live loop ---------------- */
 let fails = 0;
+let lastRediscover = Date.now();
 async function tick(){
   try{
     const m = await fetchLive();
     if (!m){ showNoGame(); return; }
     frame(m, !E.seeded); E.seeded = true;
     fails = 0; bug.classList.remove("stale");
+    if (!cfg.event && phase(m.status) === "ft" && Date.now() - lastRediscover > 600000){
+      lastRediscover = Date.now(); lastMiss = 0;
+      try{ const next = await discover(); if (next && next !== eventId) location.reload(); }catch(e){}
+    }
     setStatus("ok", "Live feed, updated " + new Date().toLocaleTimeString([], { hour:"numeric", minute:"2-digit", second:"2-digit" }));
   }catch(e){
     fails++;

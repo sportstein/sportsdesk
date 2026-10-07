@@ -246,8 +246,12 @@ vid.addEventListener("loadedmetadata", () => {
 vid.addEventListener("seeked", draw);
 
 /* ---- highlight from a separate file ---- */
-$("#hlFile").addEventListener("change", e => {
-  const f = e.target.files[0]; if (!f) return;
+// dropping a file on the highlight button loads it as the highlight, not as the main clip
+const hlLbl = $("#hlFileLbl");
+hlLbl.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); });
+hlLbl.addEventListener("drop", e => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer.files[0]) loadHl(e.dataTransfer.files[0]); });
+$("#hlFile").addEventListener("change", e => { if (e.target.files[0]) loadHl(e.target.files[0]); });
+function loadHl(f){
   const url = URL.createObjectURL(f);
   $("#hlFileLbl").textContent = f.name;
   if (f.type.startsWith("image/")){
@@ -257,7 +261,7 @@ $("#hlFile").addEventListener("change", e => {
     hlVid.onloadedmetadata = () => { st.hlImg = hlVid; $("#hlStart").max = hlVid.duration.toFixed(2); $("#hlStartWrap").hidden = false; hlVid.currentTime = 0.01; };
     hlVid.onseeked = draw;
   }
-});
+}
 $("#hlStart").addEventListener("input", e => { st.hlStart = +e.target.value; $("#hlStartV").textContent = fmt(st.hlStart); if (st.hlIsVideo) hlVid.currentTime = st.hlStart; });
 
 /* ---- trim ---- */

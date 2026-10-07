@@ -392,7 +392,6 @@ function parseBox(box, homeAbbr){
     const labels = (st.labels || st.names || []).map(x => String(x).toUpperCase());
     const raw = (a, k) => { const i = labels.indexOf(k); return i < 0 ? "" : a.stats[i]; };
     for (const a of st.athletes || []){
-      if (!loggedAthlete){ loggedAthlete = true; console.info("SportsDesk box athlete fields:", Object.keys(a), a); }
       const hasStats = Array.isArray(a.stats) && a.stats.length > 0;
       const num = k => hasStats ? (parseInt(raw(a,k),10) || 0) : 0;
       const [fgm, fga] = hasStats ? splitMA(raw(a,"FG")) : [0,0], [tpm, tpa] = hasStats ? splitMA(raw(a,"3PT")) : [0,0];
@@ -903,7 +902,7 @@ function stampOf(m){
   if (m.name === "STATUS_END_PERIOD") return "End " + periodName(m.period);
   return `${periodName(m.period)} ${m.clock}`;
 }
-let fails = 0;
+let fails = 0, lastRediscover = Date.now();
 async function tick(){
   try{
     const m = await fetchModel();
@@ -914,6 +913,11 @@ async function tick(){
     renderMonitor(m);
     E.seeded = true;
     fails = 0; bug.classList.remove("stale");
+    // left open overnight? once tonight's game is final, look every 10 minutes for the team's next game
+    if (!cfg.event && m.state === "post" && Date.now() - lastRediscover > 600000){
+      lastRediscover = Date.now();
+      try{ const next = await discover(); if (next && next !== eventId) location.reload(); }catch(e){}
+    }
     setStatus("ok", "Live feed · updated " + new Date().toLocaleTimeString([], { hour:"numeric", minute:"2-digit", second:"2-digit" }));
   }catch(e){
     fails++;
