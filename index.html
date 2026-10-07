@@ -517,7 +517,8 @@ function renderBug(m){
 function showNoGame(){
   const t = `No ${cfg.team} game on the ${cfg.league.toUpperCase()} board today`;
   bug.classList.remove("ready");
-  $("#msg").textContent = t; $("#msg").classList.add("show");
+  // on air: show the note only for the first 10 seconds after the source loads, then stay clean
+  if (performance.now() < 10000){ $("#msg").textContent = t + " (this note hides itself)"; $("#msg").classList.add("show"); setTimeout(() => $("#msg").classList.remove("show"), Math.max(0, 10000 - performance.now())); }
   $("#mMsg").textContent = t + ". Check the abbreviation (ESPN uses NY, GS, SA, NO).";
   $("#mMsg").classList.add("show");
   setStatus("ok", "No game");
