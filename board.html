@@ -369,7 +369,7 @@ function applyLive(sum){
     for (const a of stt.athletes || []){
       if (!a.athlete) continue;
       const row = { starter: !!a.starter, onCourt: a.active === true && S.state === "in" && ON_COURT_OK,
-        inactive: /inactive|not with team|suspend|g league/i.test(String(a.reason || "")) };
+        inactive: !!a.didNotPlay && /inactive|not with team|suspend|g league/i.test(String(a.reason || "")) };
       if (a.stats && a.stats.length){
         labels.forEach((k, i) => row[k] = a.stats[i]);
         const pct = (ma) => { const m = String(ma || "").match(/(\d+)-(\d+)/); return m ? `${m[1]}-${m[2]}` : "–"; };
@@ -381,8 +381,8 @@ function applyLive(sum){
   if (Object.keys(live).length) S.live = live;
   if (S.state !== "pre") renderTeams();
 }
-// ESPN's "active" flag isn't confirmed to mean on the floor yet; off until verified in a live game
-const ON_COURT_OK = P.get("oncourt") === "1";
+// ESPN's "active" flag = the five on the floor (checked: exactly 5 per team at the final buzzer). &oncourt=0 hides it
+const ON_COURT_OK = P.get("oncourt") !== "0";
 
 let timer = null;
 async function tick(){
