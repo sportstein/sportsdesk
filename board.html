@@ -252,7 +252,11 @@ function renderShell(sum, comp){
   };
   const series = (sum.seasonseries || [])[0];
   const seriesTxt = series ? `${esc(series.summary || series.description || "")}${(series.events || []).length ? "<br>" + series.events.map(e => {
-      const cs = e.competitors || []; return `<span class="dim">${esc(new Date(e.date).toLocaleDateString([], { month:"short", day:"numeric" }))}</span> ${cs.map(c => esc((c.team && c.team.abbreviation) + " " + (c.score ?? ""))).join(", ")}`;
+      const cs = e.competitors || [], played = new Date(e.date) < new Date() && cs.some(c => +c.score > 0);
+      const day = `<span class="dim">${esc(new Date(e.date).toLocaleDateString([], { month:"short", day:"numeric" }))}</span>`;
+      if (!played){ const h = cs.find(c => c.homeAway === "home"), a = cs.find(c => c.homeAway === "away");
+        return `${day} ${esc(a && a.team ? a.team.abbreviation : "")} at ${esc(h && h.team ? h.team.abbreviation : "")}`; }
+      return `${day} ${cs.map(c => esc((c.team && c.team.abbreviation) + " " + (c.score ?? ""))).join(", ")}`;
     }).join("<br>") : ""}` : `<span class="dim">First meeting this season.</span>`;
   const injuries = ["away","home"].map(s => {
     const outs = S.teams[s].players.filter(p => p.inj);
