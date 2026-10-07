@@ -86,12 +86,21 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .lines .up{color:var(--up)} .lines .down{color:var(--down)}
 .note{grid-column:2;margin-top:6px;width:100%;background:transparent;border:0;border-top:1px dashed var(--line);padding:5px 0 0;font-weight:600;font-size:15px;color:var(--pencil);resize:none;min-height:1.6em;line-height:1.35;overflow:hidden}
 .note::placeholder{color:#4a4a63}
+.fold{margin-top:10px}
+.fold summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:baseline;padding:6px 8px;background:var(--slate);color:var(--dim);font-weight:600;font-size:14px}
+.fold summary::-webkit-details-marker{display:none}
+.fold summary::before{content:"▸";color:var(--dim)}
+.fold[open] summary::before{content:"▾"}
+.fold summary .grp{margin:0;white-space:nowrap}
+.fold summary .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fold .pc{margin-top:5px}
 .msg{margin:18px;background:var(--slate);border-left:6px solid var(--chair);padding:12px 14px;font-weight:600;display:none}
 .msg.on{display:block}
 .loading{margin:30px 18px;color:var(--dim);font-weight:600}
 
 /* print / paper board */
 @media print{
+  details.fold{display:none}
   @page{size:landscape;margin:8mm}
   :root{--ink:#fff;--slate:#fff;--slate2:#eee;--chalk:#000;--dim:#555;--line:#ccc;--pencil:#000}
   body{font-size:11px}
@@ -309,25 +318,34 @@ function card(p){
 function groups(side){
   const ps = S.teams[side].players.slice();
   const live = Object.keys(S.live).length > 0;
+  const byMin = (a,b) => (num(S.live[b.id] && S.live[b.id].MIN) || 0) - (num(S.live[a.id] && S.live[a.id].MIN) || 0) || (num(b.season && b.season.MIN) || 0) - (num(a.season && a.season.MIN) || 0);
   if (live){
     const starters = ps.filter(p => S.live[p.id] && S.live[p.id].starter);
     if (starters.length){
-      const rest = ps.filter(p => !starters.includes(p)).sort((a,b) => (num(S.live[b.id] && S.live[b.id].MIN) || 0) - (num(S.live[a.id] && S.live[a.id].MIN) || 0) || (num(b.season && b.season.MIN) || 0) - (num(a.season && a.season.MIN) || 0));
-      return [["Starters", starters], ["Bench", rest]];
+      // active = in tonight's box score and not marked inactive; everyone else folds away
+      const active = p => S.live[p.id] && !S.live[p.id].inactive;
+      const bench = ps.filter(p => !starters.includes(p) && active(p)).sort(byMin);
+      const inactive = ps.filter(p => !starters.includes(p) && !active(p)).sort(byMin);
+      return [["Starters", starters], ["Bench", bench], [`Inactive (${inactive.length})`, inactive, true]];
     }
   }
-  ps.sort((a,b) => (/out/i.test(a.inj) - /out/i.test(b.inj)) || (num(b.season && b.season.MIN) || 0) - (num(a.season && a.season.MIN) || 0));
-  return [["Rotation by minutes (starters post at tip)", ps]];
+  const out = ps.filter(p => /out/i.test(p.inj)).sort(byMin);
+  const avail = ps.filter(p => !/out/i.test(p.inj)).sort(byMin);
+  return [["Rotation by minutes (starters post at tip)", avail], [`Out tonight (${out.length})`, out, true]];
 }
 function renderTeams(){
   const el = $("#teams"); if (!el) return;
+  const openFolds = new Set([...el.querySelectorAll("details.fold[open]")].map(d => d.parentElement.querySelector("h2").textContent));
   // keep whatever the user is typing
   const active = document.activeElement && document.activeElement.classList.contains("note") ? document.activeElement.dataset.id : null;
   el.innerHTML = ["away","home"].map(side => {
     const t = S.teams[side];
     return `<div class="col" style="--tc:${t.color}"><h2>${esc(t.name)}<span>${esc(t.rec)}</span></h2>` +
-      groups(side).map(([label, list]) => `<div class="grp">${esc(label)}</div>` + list.map(card).join("")).join("") + `</div>`;
+      groups(side).map(([label, list, fold]) => !list.length ? "" : fold
+        ? `<details class="fold"><summary><span class="grp">${esc(label)}</span> <span class="who">${list.map(p => esc(p.short)).join(", ")}</span></summary>${list.map(card).join("")}</details>`
+        : `<div class="grp">${esc(label)}</div>` + list.map(card).join("")).join("") + `</div>`;
   }).join("");
+  el.querySelectorAll("details.fold").forEach(d => { if (openFolds.has(d.parentElement.querySelector("h2").textContent)) d.open = true; });
   el.querySelectorAll(".note").forEach(n => {
     const fit = () => { n.style.height = "auto"; n.style.height = n.scrollHeight + "px"; };
     fit();
@@ -350,7 +368,8 @@ function applyLive(sum){
     const labels = (stt.labels || stt.names || []).map(x => String(x).toUpperCase());
     for (const a of stt.athletes || []){
       if (!a.athlete) continue;
-      const row = { starter: !!a.starter, onCourt: a.active === true && S.state === "in" && ON_COURT_OK };
+      const row = { starter: !!a.starter, onCourt: a.active === true && S.state === "in" && ON_COURT_OK,
+        inactive: /inactive|not with team|suspend|g league/i.test(String(a.reason || "")) };
       if (a.stats && a.stats.length){
         labels.forEach((k, i) => row[k] = a.stats[i]);
         const pct = (ma) => { const m = String(ma || "").match(/(\d+)-(\d+)/); return m ? `${m[1]}-${m[2]}` : "–"; };
