@@ -108,6 +108,10 @@ body{font-family:"Big Shoulders Display","Arial Narrow",sans-serif;color:var(--c
   padding:12px 18px;font-weight:700;font-size:22px}
 .msg.show{display:block}
 
+/* layer=bug shows only the scorebug (+ its tabs); layer=alerts shows only the alert cards */
+body.only-bug .alerts{visibility:hidden}
+body.only-alerts .bug,body.only-alerts .tabs,body.only-alerts .msg{visibility:hidden}
+
 /* ================= HOST MONITOR ================= */
 body.monitor{background:var(--ink);overflow:auto;font-family:"Barlow Semi Condensed","Arial Narrow",sans-serif}
 body.monitor .rig,body.monitor .msg{display:none}
@@ -276,6 +280,8 @@ cfg.demo = cfg.demo === true || cfg.demo === "1" || cfg.demo === "true";
 const OFF = new Set(String(cfg.off).toLowerCase().split(",").map(s => s.trim()).filter(Boolean));
 const on = k => !OFF.has(k);
 const MONITOR = cfg.view === "monitor";
+const LAYER = (new URLSearchParams(location.search).get("layer") || "").toLowerCase();
+if (!MONITOR && (LAYER === "bug" || LAYER === "alerts")) document.body.classList.add("only-" + LAYER);
 
 const LEAGUES = {
   "nba":                       { n:4, q:720,  ot:300 },
