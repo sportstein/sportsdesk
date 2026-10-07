@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SportsDesk Soccer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ------------------------------------------------------------------
+   SportsDesk soccer
+   - Overlay (default): OBS / Streamlabs browser source, 1920 x 1080, transparent
+   - Host monitor (?view=monitor): your own screen, off-air
+   - Replay a finished match (?event=ID&replay=1) or a fake one (?demo=1)
+------------------------------------------------------------------- */
+:root{
+  --chair:#c41e1e; --desk:#1a5fa8; --ink:#07070f; --slate:#151522; --slate2:#1d1d2c;
+  --chalk:#f3f1ea; --dim:#8b8ba3; --pencil:#ffcf33; --card-y:#f4c430; --card-r:#e0242b; --h:78px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:transparent;overflow:hidden}
+body{font-family:"Big Shoulders Display","Arial Narrow",sans-serif;color:var(--chalk);
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.monitor-only{display:none}
+
+/* ================= OVERLAY ================= */
+.rig{position:fixed;display:flex;flex-direction:column;align-items:flex-start}
+.pos-bl{left:64px;bottom:56px;transform-origin:left bottom}
+.pos-br{right:64px;bottom:56px;align-items:flex-end;transform-origin:right bottom}
+.pos-bc{left:50%;bottom:56px;align-items:center;translate:-50% 0;transform-origin:center bottom}
+.pos-tl{left:64px;top:48px;flex-direction:column-reverse;transform-origin:left top}
+
+.bug{position:relative;display:flex;height:var(--h);opacity:0;transition:opacity .4s ease;
+  filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}
+.bug.ready{opacity:1}
+.bug::after{content:"";position:absolute;inset:-3px;border:3px solid var(--chair);opacity:0;pointer-events:none;transition:opacity .3s}
+.bug.stretch::after{opacity:1}
+
+.tag{width:132px;display:flex;flex-direction:column;position:relative}
+.tag-mark{flex:1;background:var(--chair);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:25px;line-height:1}
+.tag-show{height:24px;background:var(--desk);display:flex;align-items:center;justify-content:center;gap:6px;
+  font-weight:700;font-size:15px;letter-spacing:.03em;white-space:nowrap;padding:0 8px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--chalk);display:none}
+.bug.is-live .live-dot{display:block;animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+.stale-dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--pencil);display:none}
+.bug.stale .stale-dot{display:block}
+
+.team{display:flex;align-items:stretch;background:var(--slate);position:relative}
+.team + .team{border-left:2px solid var(--ink)}
+.stripe{width:9px;background:var(--tc,#1a5fa8)}
+.id{display:flex;flex-direction:column;justify-content:center;padding:0 14px;min-width:96px}
+.abbr{font-weight:800;font-size:34px;line-height:.95}
+.rec{font-weight:600;font-size:15px;color:var(--dim);margin-top:3px;min-height:15px;display:flex;gap:4px;align-items:center}
+.rc{display:inline-block;width:10px;height:14px;background:var(--card-r);border-radius:2px}
+.score{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;min-width:80px;padding:0 14px;background:var(--ink)}
+.num{position:relative;z-index:2;font-weight:900;font-size:58px;line-height:1}
+.score::before{content:"";position:absolute;inset:0;background:var(--tc,#1a5fa8);transform:scaleX(0);transform-origin:left;z-index:1}
+.score.flash::before{animation:wipe 2.4s cubic-bezier(.2,.7,.2,1)}
+.score.flash .num{animation:numColor 2.4s steps(1)}
+@keyframes wipe{0%{transform:scaleX(0)}12%{transform:scaleX(1)}80%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
+@keyframes numColor{0%{color:var(--chalk)}12%{color:var(--ton,#fff)}90%{color:var(--chalk)}}
+.bug.is-final .team:not(.winner) .num,.bug.is-final .team:not(.winner) .abbr{color:var(--dim)}
+.bug.is-final.draw .team .num,.bug.is-final.draw .team .abbr{color:var(--chalk)}
+
+.clock{display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:112px;padding:0 16px;background:var(--chalk);color:var(--ink)}
+.period{font-weight:800;font-size:20px;line-height:1}
+.time{font-weight:900;font-size:36px;line-height:1;margin-top:2px;white-space:nowrap}
+.time:empty{display:none}
+.time small{font-size:24px;color:var(--chair);margin-left:1px}
+
+.tabs{display:flex;gap:6px;align-self:flex-start;margin-left:132px}
+.pos-br .tabs{align-self:flex-end;margin-left:0;margin-right:112px}
+.pos-bc .tabs{align-self:center;margin-left:0}
+.tab{display:none;font-weight:800;font-size:19px;padding:5px 14px 4px;letter-spacing:.02em;white-space:nowrap}
+.tab.on{display:block}
+.tab-stretch{background:var(--chair);color:var(--chalk)}
+.tab-added{background:var(--chalk);color:var(--ink)}
+.tab-men{background:var(--card-r);color:#fff}
+
+.alerts{display:flex;flex-direction:column;margin-bottom:14px;min-height:0}
+.pos-tl .alerts{margin:14px 0 0}
+.card{display:flex;min-width:380px;max-width:820px;background:var(--slate);
+  filter:drop-shadow(0 6px 18px rgba(0,0,0,.55));animation:cardIn .45s cubic-bezier(.2,.7,.2,1) both}
+.card.out{animation:cardOut .35s ease-in forwards}
+@keyframes cardIn{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes cardOut{to{opacity:0;transform:translateY(8px)}}
+.card .band{width:9px;flex:none;background:var(--tc,var(--desk))}
+.card .body{flex:1;padding:10px 20px 12px}
+.kicker{display:block;font-weight:700;font-size:18px;color:var(--dim);line-height:1.15}
+.head{display:block;font-weight:800;font-size:34px;line-height:1.02;margin-top:3px}
+.card.big .body{background:var(--tc,var(--chair));color:var(--ton,#fff);padding:12px 26px 14px}
+.card.big .kicker{color:inherit;opacity:.85}
+.card.big .head{font-weight:900;font-size:56px}
+.card.big .band{background:var(--ink)}
+.card.yellow .band{background:var(--card-y)}
+.card.red .band{background:var(--card-r)}
+
+.msg{position:fixed;left:64px;bottom:56px;display:none;background:var(--slate);border-left:9px solid var(--chair);padding:12px 18px;font-weight:700;font-size:22px}
+.msg.show{display:block}
+
+/* ================= HOST MONITOR ================= */
+body.monitor{background:var(--ink);overflow:auto;font-family:"Barlow Semi Condensed","Arial Narrow",sans-serif}
+body.monitor .rig,body.monitor .msg{display:none}
+body.monitor .monitor-only{display:block}
+body.monitor .mon{display:grid}
+.mon{max-width:1240px;margin:0 auto;padding:14px 16px 28px;gap:14px;
+  grid-template-columns:1fr;grid-template-areas:"top" "now" "feed" "stats" "xi"}
+@media (min-width:960px){
+  .mon{grid-template-columns:minmax(0,6fr) minmax(0,5fr);grid-template-rows:auto auto auto 1fr;
+    grid-template-areas:"top feed" "now feed" "stats feed" "xi feed";align-items:start}
+}
+.m-top{grid-area:top}.m-now{grid-area:now}.m-feed{grid-area:feed}.m-stats{grid-area:stats}.m-xi{grid-area:xi}
+
+.m-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-weight:600;font-size:15px;color:var(--dim);flex-wrap:wrap}
+.m-brand{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:20px;color:var(--chalk);background:var(--chair);padding:2px 10px 1px}
+.m-bar form{margin-left:auto;display:flex;gap:6px;align-items:center}
+.m-bar input{width:64px;background:var(--slate);border:1px solid #2c2c40;color:var(--chalk);font:inherit;font-weight:700;padding:4px 8px;text-transform:uppercase}
+.m-bar button{background:var(--desk);color:var(--chalk);border:0;font:inherit;font-weight:700;padding:5px 12px;cursor:pointer}
+.m-bar input:focus-visible,.m-bar button:focus-visible{outline:2px solid var(--pencil);outline-offset:1px}
+.m-status{display:flex;align-items:center;gap:6px}
+.m-status i{width:8px;height:8px;border-radius:50%;background:#3ec46d}
+.m-status.stale i{background:var(--pencil)}
+
+.m-score{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;background:var(--slate)}
+.m-team{display:flex;align-items:center;gap:12px;padding:10px 14px;border-left:8px solid var(--tc,var(--desk))}
+.m-team.away{flex-direction:row-reverse;border-left:0;border-right:8px solid var(--tc,var(--desk))}
+.m-team b{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:30px;line-height:1}
+.m-team .rcs{display:flex;gap:3px}
+.m-team strong{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:54px;line-height:1;margin-left:auto}
+.m-team.away strong{margin-left:0;margin-right:auto}
+.m-clock{background:var(--chalk);color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:6px 16px;font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:18px;line-height:1.05;min-width:104px}
+.m-clock span{font-weight:900;font-size:32px;white-space:nowrap}
+.m-clock span small{font-size:22px;color:var(--chair)}
+.m-scorers{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;font-weight:600;font-size:15px;color:var(--dim)}
+.m-scorers div:last-child{text-align:right}
+
+.m-h{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:20px;color:var(--dim);margin:0 0 6px}
+.m-list{display:flex;flex-direction:column;gap:4px}
+.m-row{display:flex;align-items:baseline;gap:10px;background:var(--slate);border-left:6px solid var(--tc,var(--desk));padding:7px 12px;font-weight:600;font-size:18px}
+.m-row b{font-weight:700}
+.m-empty{color:var(--dim);font-size:16px;padding:6px 0}
+
+.f-item{display:grid;grid-template-columns:58px 1fr;gap:10px;background:var(--slate);border-left:6px solid var(--tc,var(--desk));padding:8px 12px}
+.m-feed .m-list{gap:6px}
+.f-time{font-weight:700;font-size:15px;color:var(--dim);padding-top:3px;white-space:nowrap}
+.f-kick{display:block;font-weight:600;font-size:14px;color:var(--dim)}
+.f-head{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:24px;line-height:1.08}
+.f-item.big .f-head{font-size:28px}
+.f-item:first-child{background:var(--slate2)}
+.f-item:first-child .f-head{font-size:34px}
+.f-item.fresh{animation:fresh 2.4s ease-out}
+@keyframes fresh{0%{background:var(--tc,var(--desk))}100%{background:var(--slate2)}}
+
+.st{display:grid;grid-template-columns:56px 1fr 56px;align-items:center;gap:10px;padding:5px 0;font-weight:700;font-size:17px}
+.st .h{text-align:right}.st .a{text-align:left}
+.st .mid{display:flex;flex-direction:column;gap:3px}
+.st .lbl{text-align:center;font-weight:600;font-size:13px;color:var(--dim)}
+.st .bar{display:flex;height:6px;background:#23233a}
+.st .bar i{display:block;height:100%}
+.st .bar i + i{margin-left:auto}
+
+.xi{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.xi-team h3{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:19px;margin-bottom:4px;border-bottom:3px solid var(--tc,var(--desk));padding-bottom:3px;display:flex;justify-content:space-between}
+.xi-team h3 span{color:var(--dim);font-weight:700}
+.pl{display:grid;grid-template-columns:28px 1fr auto;gap:6px;align-items:center;padding:3px 0;border-bottom:1px solid #1d1d2e;font-weight:600;font-size:16px}
+.pl .jn{color:var(--dim);text-align:right}
+.pl .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl .nm em{font-style:normal;color:var(--dim);font-size:13px;margin-left:4px}
+.pl .ev{display:flex;gap:4px;align-items:center;font-size:13px;color:var(--dim);white-space:nowrap}
+.yc,.rcd{display:inline-block;width:9px;height:12px;border-radius:2px;background:var(--card-y)}
+.rcd{background:var(--card-r)}
+.gl{color:var(--chalk);font-weight:700}
+.off{color:#e8806f}.on{color:#6fd39a}
+.pl.out .nm{color:var(--dim)}
+.pl.unused{opacity:.4}
+.grp{font-size:13px;font-weight:600;color:var(--dim);padding:8px 0 2px}
+.m-msg{background:var(--slate);border-left:6px solid var(--chair);padding:10px 14px;font-weight:600;font-size:17px;display:none;margin-bottom:10px}
+.m-msg.show{display:block}
+
+@media (prefers-reduced-motion:reduce){
+  .bug.is-live .live-dot{animation:none}
+  .card,.card.out,.score.flash::before,.score.flash .num,.f-item.fresh{animation-duration:.01s}
+}
+</style>
+</head>
+<body>
+
+<!-- ========== OVERLAY ========== -->
+<div class="rig" id="rig">
+  <div class="alerts" id="alerts"></div>
+  <div class="tabs">
+    <div class="tab tab-stretch" id="tabStretch">Final stretch</div>
+    <div class="tab tab-men" id="tabMen"></div>
+    <div class="tab tab-added" id="tabAdded"></div>
+  </div>
+  <div class="bug" id="bug">
+    <div class="tag">
+      <div class="tag-mark">SportsDesk</div>
+      <div class="tag-show"><span class="live-dot"></span><span id="show"></span></div>
+      <span class="stale-dot"></span>
+    </div>
+    <div class="team" id="home">
+      <i class="stripe"></i>
+      <div class="id"><b class="abbr">---</b><small class="rec"></small></div>
+      <div class="score"><span class="num">0</span></div>
+    </div>
+    <div class="team" id="away">
+      <i class="stripe"></i>
+      <div class="id"><b class="abbr">---</b><small class="rec"></small></div>
+      <div class="score"><span class="num">0</span></div>
+    </div>
+    <div class="clock"><span class="period" id="period"></span><span class="time" id="time"></span></div>
+  </div>
+</div>
+<div class="msg" id="msg"></div>
+
+<!-- ========== HOST MONITOR ========== -->
+<main class="mon monitor-only" id="mon">
+  <section class="m-top">
+    <div class="m-bar">
+      <span class="m-brand">SportsDesk</span>
+      <span class="m-status" id="mStatus"><i></i><span id="mStatusTxt">Connecting</span></span>
+      <form id="mForm"><label for="mTeam">Team</label><input id="mTeam" maxlength="4" autocomplete="off"><button type="submit">Follow</button></form>
+    </div>
+    <div class="m-msg" id="mMsg"></div>
+    <div class="m-score">
+      <div class="m-team" id="mHome"><b>---</b><span class="rcs"></span><strong>0</strong></div>
+      <div class="m-clock"><div id="mPeriod">–</div><span id="mTime"></span></div>
+      <div class="m-team away" id="mAway"><b>---</b><span class="rcs"></span><strong>0</strong></div>
+    </div>
+    <div class="m-scorers"><div id="mScH"></div><div id="mScA"></div></div>
+  </section>
+  <section class="m-now"><h2 class="m-h">On now</h2><div class="m-list" id="mNow"></div></section>
+  <section class="m-stats"><h2 class="m-h">Match stats</h2><div id="mStats"></div></section>
+  <section class="m-xi"><h2 class="m-h">Lineups</h2><div class="xi" id="mXI"></div></section>
+  <section class="m-feed"><h2 class="m-h">Alerts</h2><div class="m-list" id="mFeed"><p class="m-empty">Goals, cards, subs and momentum land here as they happen.</p></div></section>
+</main>
+
+<script>
+/* ==================================================================
+   CONFIG — override any of these in the URL, e.g.
+   https://sportstein.github.io/sportsdesk/soccer.html?team=ARS&show=Arsenal%20call
+   ================================================================== */
+const DEFAULTS = {
+  team:   "ARS",       // ESPN abbreviation (ARS, CHE, MCI, LIV, TOT, MUN...)
+  event:  "",          // or a specific ESPN match ID
+  league: "eng.1",     // eng.1 Premier League, uefa.champions, esp.1, ita.1, ger.1, fra.1, usa.1, eng.fa ...
+  show:   "Live call",
+  view:   "overlay",   // overlay (OBS) | monitor (your own screen)
+  poll:   10,
+  pos:    "bl",        // bl | br | bc | tl
+  scale:  1,
+  dates:  "",
+  demo:   false,       // fake match, sped up
+  replay: false,       // replay a finished match (needs event=)
+  speed:  1.2,         // replay/demo: seconds per match minute
+  off:    null,        // alerts to switch off; overlay defaults to off=subs
+  pressure: 4,         // shots in 10 minutes for a pressure alert
+  stretch:  80         // minute the final stretch starts
+};
+const P = new URLSearchParams(location.search);
+const cfg = {};
+for (const k in DEFAULTS) cfg[k] = P.has(k) ? P.get(k) : DEFAULTS[k];
+cfg.team = String(cfg.team).toUpperCase();
+["poll","scale","speed","pressure","stretch"].forEach(k => cfg[k] = Number(cfg[k]) || DEFAULTS[k]);
+cfg.poll = Math.max(5, cfg.poll);
+const truthy = v => v === true || v === "1" || v === "true";
+cfg.demo = truthy(cfg.demo); cfg.replay = truthy(cfg.replay);
+const MONITOR = cfg.view === "monitor";
+const OFF = new Set(String(cfg.off == null ? (MONITOR ? "" : "subs") : cfg.off).toLowerCase().split(",").map(s => s.trim()).filter(Boolean));
+const on = k => !OFF.has(k);
+let LEAGUE = cfg.league;
+const base = () => `https://site.api.espn.com/apis/site/v2/sports/soccer/${LEAGUE}`;
+const FALLBACK_LEAGUES = ["eng.1","uefa.champions","uefa.europa","eng.fa","eng.league_cup","esp.1","ita.1","ger.1","fra.1","usa.1","uefa.europa.conf"];
+
+const $ = s => document.querySelector(s);
+const rig = $("#rig"), bug = $("#bug");
+rig.classList.add("pos-" + cfg.pos);
+if (cfg.scale !== 1) rig.style.scale = cfg.scale;
+$("#show").textContent = cfg.show;
+if (MONITOR){
+  document.body.classList.add("monitor");
+  document.title = "SportsDesk soccer monitor";
+  $("#mTeam").value = cfg.team;
+  $("#mForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const t = $("#mTeam").value.trim().toUpperCase(); if (!t) return;
+    P.set("team", t); P.delete("event"); P.delete("replay"); P.delete("demo");
+    location.search = P.toString();
+  });
+}
+
+/* ---------------- helpers ---------------- */
+function lum(hex){
+  const n = parseInt(hex.replace("#",""),16);
+  const c = [(n>>16)&255,(n>>8)&255,n&255].map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)});
+  return .2126*c[0]+.7152*c[1]+.0722*c[2];
+}
+function teamColor(primary, alt){
+  const ok = h => h && /^[0-9a-f]{6}$/i.test(h);
+  let c = ok(primary) ? "#"+primary : null;
+  if (!c || lum(c) < .015 || lum(c) > .85) c = ok(alt) && lum("#"+alt) >= .015 && lum("#"+alt) <= .85 ? "#"+alt : "#1a5fa8";
+  return c;
+}
+const onColor = c => lum(c) > .45 ? "#07070f" : "#ffffff";
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const other = s => s === "home" ? "away" : "home";
+
+// "59'" -> {base:59, add:0}; "45'+2'" -> {base:45, add:2}
+function parseMin(label){
+  const m = String(label || "").match(/(\d+)\s*'?\s*(?:\+\s*(\d+))?/);
+  return m ? { base:+m[1], add:+(m[2] || 0) } : { base:0, add:0 };
+}
+const ordOf = (period, mm) => period * 100000 + mm.base * 100 + mm.add;
+const minLabel = mm => mm.add ? `${mm.base}'+${mm.add}'` : `${mm.base}'`;
+const clockHTML = mm => mm.add ? `${mm.base}<small>+${mm.add}</small>'` : `${mm.base}'`;
+
+/* ---------------- normalise one ESPN summary ---------------- */
+// Turns ESPN's raw match JSON into everything the engine needs.
+// `cut` (replay/demo) hides anything after a point in the match.
+function normalise(raw, cut){
+  const comp = raw.header.competitions[0];
+  const cs = comp.competitors;
+  const sides = {};
+  const nameToSide = {};
+  for (const c of cs){
+    const s = c.homeAway === "away" ? "away" : "home";
+    const t = c.team || {};
+    sides[s] = {
+      id: String(t.id), abbr: t.abbreviation, name: t.shortDisplayName || t.name || t.displayName || t.abbreviation,
+      color: teamColor(t.color, t.alternateColor), score: parseInt(c.score,10) || 0,
+      rec: (c.record && c.record[0] && (c.record[0].displayValue || c.record[0].summary)) || ""
+    };
+    for (const n of [t.displayName, t.name, t.shortDisplayName, t.location, t.abbreviation]) if (n) nameToSide[String(n).toLowerCase()] = s;
+  }
+  const sideOfTeam = t => {
+    if (!t) return null;
+    if (t.id != null){ for (const s of ["home","away"]) if (sides[s].id === String(t.id)) return s; }
+    return nameToSide[String(t.displayName || t.name || "").toLowerCase()] || null;
+  };
+  const sideOfText = txt => {
+    const m = String(txt || "").match(/\(([^)]+)\)/);
+    return m ? (nameToSide[m[1].toLowerCase()] || null) : null;
+  };
+  const cutOrd = cut ? ordOf(cut.period, cut) : Infinity;
+
+  // players
+  const players = {}; const byName = {};
+  const lineups = { home:{ formation:"", list:[] }, away:{ formation:"", list:[] } };
+  for (const r of raw.rosters || []){
+    const s = r.homeAway === "away" ? "away" : "home";
+    lineups[s].formation = r.formation || "";
+    for (const p of r.roster || []){
+      const a = p.athlete || {};
+      const disp = a.displayName || a.fullName || "Player";
+      const pl = { id:String(a.id), side:s, name: a.shortName || disp, last: a.lastName || disp.split(" ").slice(-1)[0], disp,
+        jersey: p.jersey || "", pos: (p.position && p.position.abbreviation) || "", starter: !!p.starter,
+        fp: parseInt(p.formationPlace,10) || 0, goals:[], assists:0, yc:0, rc:0, inAt:null, outAt:null };
+      players[pl.id] = pl; byName[disp.toLowerCase()] = pl;
+      lineups[s].list.push(pl);
+    }
+  }
+  const findPlayer = (id, name) => (id && players[String(id)]) || (name && byName[String(name).toLowerCase()]) || null;
+  const lastOf = (id, name) => { const p = findPlayer(id, name); return p ? p.last : String(name || "").split(" ").slice(-1)[0]; };
+
+  // key events
+  const events = [];
+  for (const k of raw.keyEvents || []){
+    const period = (k.period && k.period.number) || 1;
+    const mm = parseMin(k.clock && k.clock.displayValue);
+    const ord = ordOf(period, mm);
+    if (ord > cutOrd) continue;
+    const t = String((k.type && k.type.text) || "").toLowerCase();
+    let kind = "other";
+    if (/own goal/.test(t)) kind = "og";
+    else if (k.scoringPlay || /^goal|penalty - scored/.test(t)) kind = "goal";
+    else if (/penalty/.test(t) && /miss|saved/.test(t)) kind = "penmiss";
+    else if (/red card/.test(t)) kind = "red";
+    else if (/yellow card/.test(t)) kind = "yellow";
+    else if (/substitution/.test(t)) kind = "sub";
+    else if (/halftime/.test(t)) kind = "ht";
+    else if (/end regular time|full time|end of match/.test(t)) kind = "ft";
+    const parts = (k.participants || []).map(p => p.athlete || {});
+    events.push({ id:String(k.id), kind, typeText:(k.type && k.type.text) || "", text:k.text || "", period, mm, label:minLabel(mm), ord,
+      side: sideOfTeam(k.team), p1:parts[0], p2:parts[1], pen: /penalty/.test(t) });
+  }
+  events.sort((a,b) => a.ord - b.ord);
+
+  // commentary (fills shots, corners, fouls, VAR, added time)
+  const com = []; let per = 1;
+  const rawCom = (raw.commentary || []).slice().sort((a,b) => (a.sequence||0) - (b.sequence||0));
+  for (const c of rawCom){
+    const txt = c.text || "";
+    if (c.play && c.play.period && c.play.period.number) per = c.play.period.number;
+    else if (/second half begins/i.test(txt)) per = 2;
+    else if (/first half extra time begins/i.test(txt)) per = 3;
+    else if (/second half extra time begins/i.test(txt)) per = 4;
+    const mm = parseMin(c.time && c.time.displayValue);
+    const ord = ordOf(per, mm);
+    if (ord > cutOrd) continue;
+    let kind = "other", n = 0;
+    if (/^attempt saved/i.test(txt)) kind = "shot-on";
+    else if (/^attempt (missed|blocked)/i.test(txt)) kind = "shot-off";
+    else if (/hits the (bar|post|crossbar|left post|right post)/i.test(txt)) kind = "woodwork";
+    else if (/^corner,/i.test(txt)) kind = "corner";
+    else if (/^foul by/i.test(txt)) kind = "foul";
+    else if (/^offside,/i.test(txt)) kind = "offside";
+    else if (/^var decision/i.test(txt)) kind = "var";
+    else { const m = txt.match(/announced (\d+) minutes? of added time/i); if (m){ kind = "added"; n = +m[1]; } }
+    let side = null;
+    if (kind === "corner" || kind === "offside") side = nameToSide[(txt.split(/[,.]/)[1] || "").trim().toLowerCase()] || sideOfTeam(c.play && c.play.team);
+    else if (kind === "var") side = sideOfTeam(c.play && c.play.team) || null;
+    else side = sideOfText(txt) || sideOfTeam(c.play && c.play.team);
+    com.push({ seq:c.sequence, text:txt, period:per, mm, label:minLabel(mm), ord, kind, side, n });
+  }
+
+  // apply events to players + running score
+  const score = { home:0, away:0 }, scorers = { home:[], away:[] };
+  for (const e of events){
+    if (e.kind === "goal" || e.kind === "og"){
+      let after = null;
+      const m = e.text.match(/(?:goal!|own goal[^.]*\.)\s*(.+?)\s(\d+),\s(.+?)\s(\d+)\./i);
+      if (m){
+        const s1 = nameToSide[m[1].toLowerCase()], s2 = nameToSide[m[3].toLowerCase()];
+        if (s1 && s2){ after = {}; after[s1] = +m[2]; after[s2] = +m[4]; }
+      }
+      const before = { ...score };
+      if (!after){
+        after = { ...score };
+        const benefit = e.kind === "og" ? (e.side ? other(e.side) : null) : e.side;
+        if (benefit) after[benefit]++;
+      }
+      e.before = before; e.after = after;
+      e.scoreSide = after.home > before.home ? "home" : after.away > before.away ? "away" : (e.side || "home");
+      score.home = after.home; score.away = after.away;
+      const sc = findPlayer(e.p1 && e.p1.id, e.p1 && e.p1.displayName);
+      if (sc && e.kind === "goal"){ sc.goals.push(e.label); e.tally = sc.goals.length; }
+      const as = e.kind === "goal" && findPlayer(e.p2 && e.p2.id, e.p2 && e.p2.displayName);
+      if (as) as.assists++;
+      scorers[e.scoreSide].push(`${lastOf(e.p1 && e.p1.id, e.p1 && e.p1.displayName)} ${e.label}${e.kind === "og" ? " (og)" : e.pen ? " (pen)" : ""}`);
+    } else if (e.kind === "yellow" || e.kind === "red"){
+      const p = findPlayer(e.p1 && e.p1.id, e.p1 && e.p1.displayName);
+      if (p){ if (e.kind === "yellow") p.yc++; else { e.second = p.yc > 0 || /yellow/i.test(e.typeText); p.rc++; p.outAt = e.label; } }
+    } else if (e.kind === "sub"){
+      const pin = findPlayer(e.p1 && e.p1.id, e.p1 && e.p1.displayName), pout = findPlayer(e.p2 && e.p2.id, e.p2 && e.p2.displayName);
+      if (pin) pin.inAt = e.label; if (pout) pout.outAt = e.label;
+    }
+  }
+  const reds = { home:0, away:0 };
+  events.filter(e => e.kind === "red").forEach(e => { if (e.side) reds[e.side]++; });
+
+  // stats: ESPN's box score when live, counted from commentary in replay
+  const stats = { home:{}, away:{} };
+  if (!cut){
+    for (const t of (raw.boxscore && raw.boxscore.teams) || []){
+      const s = sideOfTeam(t.team) || (t.team && t.team.abbreviation === sides.away.abbr ? "away" : "home");
+      for (const st of t.statistics || []) stats[s][st.name] = st.displayValue;
+    }
+  }
+  if (cut || !Object.keys(stats.home).length){
+    for (const s of ["home","away"]){
+      const mine = com.filter(c => c.side === s);
+      const goals = events.filter(e => (e.kind === "goal") && e.scoreSide === s).length;
+      stats[s] = {
+        totalShots: mine.filter(c => /shot|woodwork/.test(c.kind)).length + goals,
+        shotsOnTarget: mine.filter(c => c.kind === "shot-on").length + goals,
+        wonCorners: mine.filter(c => c.kind === "corner").length,
+        foulsCommitted: mine.filter(c => c.kind === "foul").length,
+        offsides: mine.filter(c => c.kind === "offside").length,
+        yellowCards: events.filter(e => e.kind === "yellow" && e.side === s).length,
+        redCards: reds[s]
+      };
+    }
+  }
+  return { sides, events, com, players, lineups, score, scorers, reds, stats, findPlayer, lastOf };
+}
+
+/* ---------------- model: live ---------------- */
+let eventId = cfg.event || null;
+async function getJSON(url){
+  const r = await fetch(url + (url.includes("?")?"&":"?") + "_=" + Date.now(), { cache:"no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+async function discover(){
+  const leagues = P.has("league") ? [cfg.league] : [cfg.league, ...FALLBACK_LEAGUES.filter(l => l !== cfg.league)];
+  for (const lg of leagues){
+    try{
+      const d = await getJSON(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lg}/scoreboard${cfg.dates ? "?dates="+cfg.dates : ""}`);
+      for (const ev of d.events || []){
+        const cs = ev.competitions[0].competitors;
+        if (cs.some(c => (c.team.abbreviation || "").toUpperCase() === cfg.team)){ LEAGUE = lg; return ev.id; }
+      }
+    }catch(e){}
+  }
+  return null;
+}
+function statusOf(raw){
+  const st = raw.header.competitions[0].status || {};
+  const t = st.type || {};
+  return { state:t.state, name:t.name || "", period: st.period || 0, clock: st.displayClock || t.shortDetail || "",
+           detail: t.shortDetail || t.detail || "", date: raw.header.competitions[0].date };
+}
+async function fetchLive(){
+  if (!eventId){ eventId = await discover(); if (!eventId) return null; }
+  const raw = await getJSON(`${base()}/summary?event=${encodeURIComponent(eventId)}`);
+  const n = normalise(raw, null);
+  const s = statusOf(raw);
+  // trust the header's score when live
+  n.score = { home:n.sides.home.score, away:n.sides.away.score };
+  return { ...n, status:s, replay:false };
+}
+
+/* ---------------- labels ---------------- */
+function phase(st){
+  const n = st.name;
+  if (st.state === "pre") return "pre";
+  if (st.state === "post" || /FULL_TIME|FINAL/.test(n)) return "ft";
+  if (/HALFTIME/.test(n)) return "ht";
+  if (/SHOOTOUT|PENALT/.test(n)) return "pens";
+  if (/END_OF_REGULATION|END_OF_EXTRATIME|END_EXTRA/.test(n)) return "break";
+  return "live";
+}
+function clockParts(m){
+  const st = m.status, ph = phase(st);
+  if (ph === "pre") return { p:"Kickoff", t: new Date(st.date).toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }), html:false };
+  if (ph === "ft") return { p:"Full time", t:"FT", html:false };
+  if (ph === "ht") return { p:"Half time", t:"HT", html:false };
+  if (ph === "pens") return { p:"Penalties", t:"PENS", html:false };
+  if (ph === "break") return { p:"Break", t:"", html:false };
+  const mm = parseMin(st.clock);
+  const p = st.period === 1 ? "1st half" : st.period === 2 ? "2nd half" : st.period >= 3 ? "Extra time" : "";
+  return { p, t: clockHTML(mm), html:true, mm };
+}
+const stampOf = m => { const c = clockParts(m); return c.mm ? minLabel(c.mm) : c.t || c.p; };
+
+/* ---------------- scorebug ---------------- */
+const prevScore = { home:null, away:null };
+function paintTeam(key, t, score, reds){
+  const el = $("#"+key);
+  el.style.setProperty("--tc", t.color); el.style.setProperty("--ton", onColor(t.color));
+  el.querySelector(".abbr").textContent = t.abbr;
+  el.querySelector(".rec").innerHTML = reds ? '<i class="rc"></i>'.repeat(reds) : esc(t.rec);
+  el.querySelector(".num").textContent = score;
+  const before = prevScore[key];
+  if (before !== null && score > before){
+    const sc = el.querySelector(".score"); sc.classList.remove("flash"); void sc.offsetWidth; sc.classList.add("flash");
+  }
+  prevScore[key] = score;
+}
+function renderBug(m){
+  $("#msg").classList.remove("show"); $("#mMsg").classList.remove("show");
+  paintTeam("home", m.sides.home, m.score.home, m.reds.home);
+  paintTeam("away", m.sides.away, m.score.away, m.reds.away);
+  const c = clockParts(m);
+  $("#period").textContent = c.p;
+  if (c.html) $("#time").innerHTML = c.t; else $("#time").textContent = c.t;
+  const ph = phase(m.status);
+  bug.classList.toggle("is-live", ph === "live");
+  bug.classList.toggle("is-final", ph === "ft");
+  bug.classList.toggle("draw", ph === "ft" && m.score.home === m.score.away);
+  $("#home").classList.toggle("winner", ph === "ft" && m.score.home > m.score.away);
+  $("#away").classList.toggle("winner", ph === "ft" && m.score.away > m.score.home);
+  bug.classList.add("ready");
+  if (MONITOR) renderMonitorTop(m, c);
+}
+function showNoGame(){
+  const t = `No ${cfg.team} match found today`;
+  bug.classList.remove("ready");
+  $("#msg").textContent = t; $("#msg").classList.add("show");
+  $("#mMsg").textContent = t + ". Check the team code (ESPN uses ARS, CHE, MCI, LIV, TOT, MUN, NEW...) or add &event= with the match ID.";
+  $("#mMsg").classList.add("show");
+  setStatus("ok", "No match");
+}
+
+/* ---------------- on-air alert queue ---------------- */
+const queue = []; let showing = false;
+function alertCard(a){
+  if (queue.length >= 4){ const i = queue.findIndex(x => !x.big); queue.splice(i < 0 ? 0 : i, 1); }
+  queue.push(a); pump();
+}
+function pump(){
+  if (showing || !queue.length) return;
+  const a = queue.shift(); showing = true;
+  const el = document.createElement("div");
+  el.className = "card" + (a.big ? " big" : "") + (a.cls ? " " + a.cls : "");
+  const tc = a.color || "#1a5fa8";
+  el.style.setProperty("--tc", tc); el.style.setProperty("--ton", onColor(tc));
+  el.innerHTML = `<i class="band"></i><div class="body"><span class="kicker"></span><span class="head"></span></div>`;
+  el.querySelector(".kicker").textContent = a.kicker;
+  el.querySelector(".head").textContent = a.head;
+  $("#alerts").appendChild(el);
+  const dwell = (a.big ? 9000 : 6500) * Math.min(1, (cfg.demo || cfg.replay) ? .7 : 1);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => { el.remove(); showing = false; pump(); }, 380); }, dwell);
+}
+
+/* ---------------- engine ---------------- */
+const E = { seeded:false, seenEv:new Set(), seenCom:new Set(), stretch:false, stretchFired:false, pressAt:{}, ht:false, ft:false, now:[] };
+const feed = [];
+function emit(a){
+  if (!MONITOR) alertCard(a);
+  feed.unshift(a); if (feed.length > 60) feed.pop();
+  if (MONITOR) renderFeed();
+}
+
+function runEngine(m, silent){
+  const T = s => m.sides[s];
+  const fire = (key, a) => { if (silent || !on(key)) return; emit(a); };
+  const scoreTxt = sc => `${sc.home}-${sc.away}`;
+  const ph = phase(m.status);
+  const cp = clockParts(m);
+  const nowMin = cp.mm ? cp.mm.base + cp.mm.add : null;
+  const now = [];
+
+  // ---- key events: goals, cards, subs, penalties
+  for (const e of m.events){
+    if (E.seenEv.has(e.id)) continue;
+    E.seenEv.add(e.id);
+    const s = e.side, team = s ? T(s) : null;
+    const who = e.p1 ? m.lastOf(e.p1.id, e.p1.displayName) : "";
+    if (e.kind === "goal" || e.kind === "og"){
+      const ss = e.scoreSide, st = T(ss), b = e.before, a = e.after;
+      const tied = a.home === a.away, wasTied = b.home === b.away;
+      const trailedStill = a[ss] < a[other(ss)];
+      let kick;
+      if (e.kind === "og") kick = `Own goal, ${st.name}`;
+      else if (e.tally === 3) kick = `Hat trick, ${who}!`;
+      else if (tied) kick = `Equaliser, ${st.name}`;
+      else if (wasTied && a.home + a.away === 1) kick = `Opener, ${st.name}`;
+      else if (wasTied) kick = `Go-ahead goal, ${st.name}`;
+      else if (trailedStill) kick = `Goal back, ${st.name}`;
+      else kick = `Goal, ${st.name}`;
+      if (e.pen && e.kind === "goal") kick = kick.startsWith("Goal,") ? kick.replace("Goal,", "Penalty,") : "Penalty " + kick[0].toLowerCase() + kick.slice(1);
+      if (e.tally === 2) kick += ", brace";
+      const assist = e.kind === "goal" && e.p2 ? `, assisted by ${m.lastOf(e.p2.id, e.p2.displayName)}` : "";
+      fire("goal", { big:true, color:st.color, kicker:`${kick}${assist}`, head:`${who} ${e.label}, ${scoreTxt(a)}` });
+    } else if (e.kind === "red" && team){
+      const left = 11 - m.reds[s];
+      fire("red", { big:true, cls:"red", color:"#e0242b", kicker:`${e.second ? "Second yellow" : "Red card"}, ${team.name}`, head:`${who} ${e.label}, down to ${left}` });
+    } else if (e.kind === "yellow" && team){
+      fire("yellow", { cls:"yellow", color:team.color, kicker:`Yellow card, ${team.name}`, head:`${who} ${e.label}` });
+    } else if (e.kind === "penmiss" && team){
+      fire("goal", { big:true, color:team.color, kicker:`Penalty ${/saved/i.test(e.typeText + e.text) ? "saved" : "missed"}`, head:`${who} ${e.label}` });
+    } else if (e.kind === "sub" && team){
+      const out = e.p2 ? m.lastOf(e.p2.id, e.p2.displayName) : "";
+      fire("subs", { color:team.color, kicker:`Substitution, ${team.name} ${e.label}`, head:`${who} on, ${out} off` });
+    }
+  }
+
+  // ---- commentary: added time, VAR, woodwork
+  let added = null;
+  for (const c of m.com){
+    if (c.kind === "added" && (!cp.mm || c.period === m.status.period)) added = c;
+    if (E.seenCom.has(c.seq)) continue;
+    E.seenCom.add(c.seq);
+    if (c.kind === "added") fire("added", { color:"#f3f1ea", kicker:`Fourth official, ${c.label}`, head:`+${c.n} minutes added` });
+    else if (c.kind === "var"){
+      const what = c.text.replace(/^var decision:\s*/i, "").replace(/\.$/, "");
+      fire("var", { color: c.side ? T(c.side).color : "#1a5fa8", kicker:`VAR check ${c.label}`, head: what });
+    } else if (c.kind === "woodwork"){
+      const nm = (c.text.match(/^([^(]+)\(/) || [])[1];
+      const p = nm && m.findPlayer(null, nm.trim());
+      const what = (c.text.match(/hits the (left post|right post|post|crossbar|bar)/i) || [,"woodwork"])[1];
+      fire("woodwork", { color: c.side ? T(c.side).color : "#1a5fa8", kicker:`Off the woodwork ${c.label}`, head:`${p ? p.last : (nm || "").trim()} hits the ${what.toLowerCase()}` });
+    }
+  }
+  const addedOn = added && ph === "live" && cp.mm && (cp.mm.base >= (m.status.period === 1 ? 44 : m.status.period === 2 ? 89 : 0) || cp.mm.add > 0);
+  $("#tabAdded").textContent = added ? `+${added.n} added` : "";
+  $("#tabAdded").classList.toggle("on", !!addedOn && on("added"));
+  if (addedOn) now.push({ color:"#f3f1ea", text:`+${added.n} minutes added`, sub: m.status.period === 1 ? "first half" : "second half" });
+
+  // ---- pressure: one side piling up shots in the last 10 minutes
+  if (ph === "live" && nowMin != null){
+    for (const s of ["home","away"]){
+      const recent = sd => m.com.filter(c => c.side === sd && c.period === m.status.period && /shot|woodwork/.test(c.kind) && (c.mm.base + c.mm.add) > nowMin - 10).length
+        + m.events.filter(e => (e.kind === "goal") && e.scoreSide === sd && e.period === m.status.period && (e.mm.base + e.mm.add) > nowMin - 10).length;
+      const mine = recent(s), theirs = recent(other(s));
+      if (mine >= cfg.pressure && theirs <= 1){
+        now.push({ color:T(s).color, text:`${T(s).name} on top`, sub:`${mine} shots in 10 minutes` });
+        const last = E.pressAt[s];
+        if (last == null || nowMin - last >= 15 || m.status.period !== E.pressPer){
+          E.pressAt[s] = nowMin; E.pressPer = m.status.period;
+          fire("pressure", { color:T(s).color, kicker:`Pressure, ${minLabel(cp.mm)}`, head:`${T(s).name}: ${mine} shots in the last 10 minutes` });
+        }
+      }
+    }
+  }
+
+  // ---- man advantage
+  if (m.reds.home !== m.reds.away && ph !== "pre"){
+    const up = m.reds.home < m.reds.away ? "home" : "away";
+    const txt = `${11 - m.reds.home} v ${11 - m.reds.away}`;
+    $("#tabMen").textContent = txt; $("#tabMen").classList.toggle("on", on("red") && ph !== "ft");
+    if (ph !== "ft") now.push({ color:T(up).color, text:`${T(up).name} have the extra man`, sub: txt });
+  } else $("#tabMen").classList.remove("on");
+
+  // ---- final stretch: late, one-goal game or level
+  const margin = Math.abs(m.score.home - m.score.away);
+  const late = ph === "live" && m.status.period === 2 && cp.mm && cp.mm.base >= cfg.stretch;
+  if (late && margin <= 1){
+    E.stretch = true;
+    if (!E.stretchFired){
+      E.stretchFired = true;
+      fire("stretch", { big:true, color:"#c41e1e", kicker:`${minLabel(cp.mm)}, final stretch`, head: margin ? "One-goal game" : "All square" });
+    }
+  } else if (!late || margin >= 2) E.stretch = false;
+  const stretchOn = E.stretch && on("stretch");
+  bug.classList.toggle("stretch", stretchOn); $("#tabStretch").classList.toggle("on", stretchOn);
+  if (E.stretch) now.push({ color:"#c41e1e", text:"Final stretch", sub: margin ? "one-goal game" : "level" });
+
+  // ---- half time / full time summary
+  const summary = () => {
+    const sh = m.stats.home, sa = m.stats.away;
+    const parts = [`shots ${sh.totalShots ?? 0}-${sa.totalShots ?? 0}`, `on target ${sh.shotsOnTarget ?? 0}-${sa.shotsOnTarget ?? 0}`];
+    if (sh.possessionPct) parts.push(`possession ${Math.round(+sh.possessionPct)}%-${Math.round(+sa.possessionPct)}%`);
+    return parts.join(", ");
+  };
+  const htNow = ph === "ht" || (m.replay && m.events.some(e => e.kind === "ht") && m.status.period === 1 && ph !== "live");
+  if (htNow && !E.ht){ E.ht = true; fire("summary", { color:"#1a5fa8", kicker:`Half time, ${m.sides.home.name} ${scoreTxt(m.score)} ${m.sides.away.name}`, head: summary() }); }
+  if (ph === "ft" && !E.ft){ E.ft = true; fire("summary", { color:"#1a5fa8", kicker:`Full time, ${m.sides.home.name} ${scoreTxt(m.score)} ${m.sides.away.name}`, head: summary() }); }
+
+  // ---- players on a yellow (monitor)
+  for (const s of ["home","away"]){
+    const booked = m.lineups[s].list.filter(p => p.yc && !p.rc && !p.outAt).map(p => p.last);
+    if (booked.length && ph !== "ft" && ph !== "pre") now.push({ color:"#f4c430", text:`${T(s).abbr} on a yellow`, sub: booked.join(", ") });
+  }
+  E.now = now;
+}
+
+/* ---------------- host monitor ---------------- */
+function setStatus(kind, text){
+  if (!MONITOR) return;
+  $("#mStatus").className = "m-status" + (kind === "stale" ? " stale" : "");
+  $("#mStatusTxt").textContent = text;
+}
+function renderMonitorTop(m, c){
+  for (const [k, sel] of [["home","#mHome"],["away","#mAway"]]){
+    const node = $(sel); node.style.setProperty("--tc", m.sides[k].color);
+    node.querySelector("b").textContent = m.sides[k].abbr;
+    node.querySelector("strong").textContent = m.score[k];
+    node.querySelector(".rcs").innerHTML = '<i class="rcd"></i>'.repeat(m.reds[k]);
+  }
+  $("#mPeriod").textContent = c.p;
+  if (c.html) $("#mTime").innerHTML = c.t; else $("#mTime").textContent = c.t;
+  $("#mScH").textContent = m.scorers.home.join(", ");
+  $("#mScA").textContent = m.scorers.away.join(", ");
+}
+function renderNow(){
+  const list = E.now || [];
+  $("#mNow").innerHTML = list.length
+    ? list.map(n => `<div class="m-row" style="--tc:${n.color}"><b>${esc(n.text)}</b>${n.sub ? `<span>${esc(n.sub)}</span>` : ""}</div>`).join("")
+    : `<p class="m-empty">Nothing brewing. Pressure spells, red cards, added time and bookings show here while they matter.</p>`;
+}
+let lastTop = null;
+function renderFeed(){
+  if (!feed.length) return;
+  $("#mFeed").innerHTML = feed.map(a =>
+    `<div class="f-item${a.big ? " big" : ""}" style="--tc:${a.cls === "yellow" ? "#f4c430" : a.color || "#1a5fa8"}"><span class="f-time">${esc(a.stamp || "")}</span>` +
+    `<div><span class="f-kick">${esc(a.kicker)}</span><span class="f-head">${esc(a.head)}</span></div></div>`).join("");
+  if (feed[0] !== lastTop){ lastTop = feed[0]; $("#mFeed .f-item").classList.add("fresh"); }
+}
+function renderStats(m){
+  const H = m.stats.home, A = m.stats.away, ch = m.sides.home.color, ca = m.sides.away.color;
+  const rows = [
+    ["Possession", "possessionPct", v => v === "" || v == null ? null : Math.round(+v) + "%"],
+    ["Shots", "totalShots"], ["On target", "shotsOnTarget"], ["Corners", "wonCorners"],
+    ["Fouls", "foulsCommitted"], ["Offsides", "offsides"], ["Yellow cards", "yellowCards"],
+    ["Red cards", "redCards"], ["Saves", "saves"],
+    ["Pass accuracy", "passPct", v => v == null || v === "" ? null : Math.round(+v * (+v <= 1 ? 100 : 1)) + "%"]
+  ];
+  const html = rows.map(([lbl, key, fmt]) => {
+    const hv = H[key], av = A[key];
+    if (hv == null && av == null) return "";
+    const f = fmt || (v => v == null ? "–" : v);
+    const hs = f(hv), as = f(av);
+    if (hs == null && as == null) return "";
+    const hn = parseFloat(hv) || 0, an = parseFloat(av) || 0, tot = hn + an;
+    const hw = tot ? hn / tot * 100 : 50;
+    return `<div class="st"><span class="h">${esc(hs ?? "–")}</span><div class="mid"><span class="lbl">${lbl}</span>` +
+      `<div class="bar"><i style="width:${hw}%;background:${ch}"></i><i style="width:${100-hw}%;background:${ca}"></i></div></div>` +
+      `<span class="a">${esc(as ?? "–")}</span></div>`;
+  }).join("");
+  $("#mStats").innerHTML = html + (m.replay ? `<p class="m-empty">Replay: counts rebuilt from the play-by-play.</p>` : "");
+}
+function plRow(p, benchRow){
+  const ev = [];
+  p.goals.forEach(g => ev.push(`<span class="gl">G ${esc(g)}</span>`));
+  if (p.assists) ev.push(`<span>A${p.assists > 1 ? "×" + p.assists : ""}</span>`);
+  if (p.yc) ev.push('<i class="yc"></i>');
+  if (p.rc) ev.push('<i class="rcd"></i>');
+  if (benchRow && p.inAt) ev.push(`<span class="on">↑${esc(p.inAt)}</span>`);
+  if (p.outAt && !p.rc) ev.push(`<span class="off">↓${esc(p.outAt)}</span>`);
+  const cls = "pl" + (p.outAt ? " out" : "") + (benchRow && !p.inAt ? " unused" : "");
+  return `<div class="${cls}"><span class="jn">${esc(p.jersey)}</span><span class="nm">${esc(p.name)}<em>${esc(p.pos === "SUB" ? "" : p.pos)}</em></span><span class="ev">${ev.join("")}</span></div>`;
+}
+function renderXI(m){
+  $("#mXI").innerHTML = ["home","away"].map(s => {
+    const L = m.lineups[s], t = m.sides[s];
+    if (!L.list.length) return `<div class="xi-team" style="--tc:${t.color}"><h3>${esc(t.name)}</h3><p class="m-empty">Lineups usually post about an hour before kickoff.</p></div>`;
+    const xi = L.list.filter(p => p.starter).sort((a,b) => a.fp - b.fp);
+    const bench = L.list.filter(p => !p.starter).sort((a,b) => (!!b.inAt - !!a.inAt) || (parseInt(a.jersey)||99) - (parseInt(b.jersey)||99));
+    return `<div class="xi-team" style="--tc:${t.color}"><h3>${esc(t.name)}<span>${esc(L.formation)}</span></h3>` +
+      xi.map(p => plRow(p, false)).join("") + `<div class="grp">Bench</div>` + bench.map(p => plRow(p, true)).join("") + `</div>`;
+  }).join("");
+}
+function renderMonitor(m){ if (!MONITOR) return; renderNow(); renderStats(m); renderXI(m); }
+
+/* ---------------- one frame ---------------- */
+let curStamp = "";
+const _emit = emit;
+function frame(m, silent){
+  curStamp = stampOf(m);
+  renderBug(m);
+  feedStamp = curStamp;
+  runEngine(m, silent);
+  renderMonitor(m);
+}
+let feedStamp = "";
+// stamp each alert with the match clock
+emit = function(a){ a.stamp = feedStamp; _emit(a); };
+
+/* ---------------- live loop ---------------- */
+let fails = 0;
+async function tick(){
+  try{
+    const m = await fetchLive();
+    if (!m){ showNoGame(); return; }
+    frame(m, !E.seeded); E.seeded = true;
+    fails = 0; bug.classList.remove("stale");
+    setStatus("ok", "Live feed, updated " + new Date().toLocaleTimeString([], { hour:"numeric", minute:"2-digit", second:"2-digit" }));
+  }catch(e){
+    fails++;
+    if (fails >= 2){ bug.classList.add("stale"); setStatus("stale", "Feed not responding, showing last data"); }
+    console.warn("Soccer feed failed:", e);
+  }
+}
+
+/* ---------------- replay / demo: play a whole match back ---------------- */
+function addedFor(raw, period){
+  let n = 0, per = 1;
+  for (const c of (raw.commentary || []).slice().sort((a,b) => (a.sequence||0) - (b.sequence||0))){
+    if (c.play && c.play.period && c.play.period.number) per = c.play.period.number;
+    else if (/second half begins/i.test(c.text || "")) per = 2;
+    const mt = (c.text || "").match(/announced (\d+) minutes? of added time/i);
+    if (mt && per === period) n = +mt[1];
+  }
+  for (const k of raw.keyEvents || []) if (((k.period && k.period.number) || 1) === period){ const mm = parseMin(k.clock && k.clock.displayValue); n = Math.max(n, mm.add); }
+  return n;
+}
+function playBack(raw){
+  const add1 = addedFor(raw, 1), add2 = addedFor(raw, 2);
+  const steps = [];
+  steps.push({ name:"STATUS_SCHEDULED", state:"pre", period:0, base:0, add:0 });
+  for (let i = 1; i <= 45; i++) steps.push({ name:"STATUS_FIRST_HALF", state:"in", period:1, base:i, add:0 });
+  for (let i = 1; i <= add1; i++) steps.push({ name:"STATUS_FIRST_HALF", state:"in", period:1, base:45, add:i });
+  for (let i = 0; i < 4; i++) steps.push({ name:"STATUS_HALFTIME", state:"in", period:1, base:45, add:add1 + 1 });
+  for (let i = 46; i <= 90; i++) steps.push({ name:"STATUS_SECOND_HALF", state:"in", period:2, base:i, add:0 });
+  for (let i = 1; i <= add2; i++) steps.push({ name:"STATUS_SECOND_HALF", state:"in", period:2, base:90, add:i });
+  steps.push({ name:"STATUS_FULL_TIME", state:"post", period:2, base:90, add:add2 + 1 });
+  let i = 0;
+  const comp = raw.header.competitions[0];
+  const step = () => {
+    if (i >= steps.length) return;
+    const s = steps[i++];
+    const cut = s.state === "pre" ? { period:0, base:0, add:0 } : { period:s.period, base:s.base, add:s.add };
+    const n = normalise(raw, cut);
+    n.status = { state:s.state, name:s.name, period:s.period, clock: s.add ? `${s.base}'+${s.add}'` : `${s.base}'`, detail:"", date: comp.date };
+    n.replay = true;
+    frame(n, i === 1);
+    if (i < steps.length) setTimeout(step, cfg.speed * 1000);
+  };
+  setStatus("ok", cfg.demo ? "Demo match" : "Replay");
+  step();
+}
+
+/* ---------------- demo: a believable fake match in ESPN's shape ---------------- */
+function demoRaw(){
+  const R = (a,b) => a + Math.floor(Math.random() * (b - a + 1));
+  const pick = l => l[Math.floor(Math.random() * l.length)];
+  const T = {
+    home:{ id:"359", abbreviation:"ARS", name:"Arsenal", shortDisplayName:"Arsenal", displayName:"Arsenal", color:"e20520", alternateColor:"003399", formation:"4-3-3",
+      xi:[["1","D. Raya","Raya","G"],["4","B. White","White","RB"],["2","W. Saliba","Saliba","CD-R"],["6","Gabriel","Gabriel","CD-L"],["33","R. Calafiori","Calafiori","LB"],
+          ["41","D. Rice","Rice","DM"],["8","M. Ødegaard","Ødegaard","CM-R"],["36","M. Zubimendi","Zubimendi","CM-L"],["7","B. Saka","Saka","RW"],["9","V. Gyökeres","Gyökeres","F"],["11","G. Martinelli","Martinelli","LW"]],
+      bench:[["13","K. Hein","Hein","SUB"],["3","C. Mosquera","Mosquera","SUB"],["10","E. Eze","Eze","SUB"],["23","M. Merino","Merino","SUB"],["19","L. Trossard","Trossard","SUB"],["29","K. Havertz","Havertz","SUB"],["49","M. Lewis-Skelly","Lewis-Skelly","SUB"]] },
+    away:{ id:"363", abbreviation:"CHE", name:"Chelsea", shortDisplayName:"Chelsea", displayName:"Chelsea", color:"034694", alternateColor:"ffffff", formation:"4-2-3-1",
+      xi:[["1","R. Sánchez","Sánchez","G"],["27","M. Gusto","Gusto","RB"],["6","L. Colwill","Colwill","CD-R"],["29","W. Fofana","Fofana","CD-L"],["3","M. Cucurella","Cucurella","LB"],
+          ["25","M. Caicedo","Caicedo","DM-R"],["8","E. Fernández","Fernández","DM-L"],["20","C. Palmer","Palmer","AM"],["7","P. Neto","Neto","RM"],["9","L. Delap","Delap","F"],["11","J. Gittens","Gittens","LM"]],
+      bench:[["12","F. Jörgensen","Jörgensen","SUB"],["21","J. Hato","Hato","SUB"],["17","A. Santos","Santos","SUB"],["10","A. Garnacho","Garnacho","SUB"],["38","M. Guiu","Guiu","SUB"],["45","R. Lavia","Lavia","SUB"],["49","T. George","George","SUB"]] }
+  };
+  let pid = 1000;
+  const roster = {};
+  for (const s of ["home","away"]){
+    roster[s] = [...T[s].xi.map((p,i) => ({ starter:true, fp:i+1, p })), ...T[s].bench.map(p => ({ starter:false, fp:0, p }))]
+      .map(o => ({ starter:o.starter, jersey:o.p[0], formationPlace:String(o.fp), position:{ abbreviation:o.p[3] },
+        athlete:{ id:String(pid++), displayName:o.p[1], shortName:o.p[1], lastName:o.p[2] } }));
+  }
+  const key = [], com = []; let seq = 0, kid = 1;
+  const label = (period, base, add) => add ? `${base}'+${add}'` : `${base}'`;
+  const team = s => ({ id:T[s].id, displayName:T[s].displayName });
+  const ath = p => ({ athlete:{ id:p.athlete.id, displayName:p.athlete.displayName } });
+  const outfield = s => roster[s].filter(p => p.starter && p.position.abbreviation !== "G");
+  const add1 = R(1,4), add2 = R(3,8);
+  const sc = { home:0, away:0 };
+  const timeline = [];
+  // build a minute-by-minute script with momentum swings
+  let tilt = "home";
+  for (const [period, from, to, add] of [[1,1,45,add1],[2,46,90,add2]]){
+    if (period === 2) timeline.push({ period, base:45, add:0, ev:"start2" });
+    for (let m = from; m <= to + add; m++){
+      const base = m > to ? to : m, ad = m > to ? m - to : 0;
+      if (Math.random() < .12) tilt = other(tilt);
+      if (base === to && ad === 0 && add) timeline.push({ period, base, add:0, ev:"added", n:add });
+      const r = Math.random();
+      const s = Math.random() < .7 ? tilt : other(tilt);
+      if (r < .30) timeline.push({ period, base, add:ad, ev:"shot", side:s });
+      else if (r < .38) timeline.push({ period, base, add:ad, ev:"corner", side:s });
+      else if (r < .52) timeline.push({ period, base, add:ad, ev:"foul", side:s });
+      else if (r < .555) timeline.push({ period, base, add:ad, ev:"offside", side:s });
+      if (Math.random() < .045) timeline.push({ period, base, add:ad, ev:"yellow", side:pick(["home","away"]) });
+      if (Math.random() < .004) timeline.push({ period, base, add:ad, ev:"red", side:pick(["home","away"]) });
+      if (Math.random() < .012) timeline.push({ period, base, add:ad, ev:"wood", side:s });
+      if (Math.random() < .008) timeline.push({ period, base, add:ad, ev:"var", side:s });
+      if (period === 2 && base >= 58 && base <= 88 && Math.random() < .14) timeline.push({ period, base, add:ad, ev:"sub", side:pick(["home","away"]) });
+    }
+    if (period === 1) timeline.push({ period, base:45, add:add1, ev:"ht" });
+  }
+  timeline.push({ period:2, base:90, add:add2, ev:"ft" });
+  const subsLeft = { home: roster.home.filter(p => !p.starter && p.jersey !== "13"), away: roster.away.filter(p => !p.starter && p.jersey !== "12") };
+  const onPitch = { home: outfield("home"), away: outfield("away") };
+  const yellow = new Set();
+  for (const t of timeline){
+    const lab = label(t.period, t.base, t.add), clock = { value:0, displayValue:lab }, per = { number:t.period };
+    const s = t.side, P = s && pick(onPitch[s]);
+    const nm = P && P.athlete.displayName, tm = s && T[s].displayName;
+    const C = (text, extra) => com.push({ sequence: seq++, time:{ displayValue: t.ev === "start2" ? "45'" : lab }, text, play:{ period:per, team: s ? { displayName:tm } : undefined, ...(extra||{}) } });
+    if (t.ev === "shot"){
+      const q = Math.random();
+      if (q < .11){
+        sc[s]++;
+        const as = pick(onPitch[s].filter(x => x !== P));
+        const text = `Goal! ${T.home.displayName} ${sc.home}, ${T.away.displayName} ${sc.away}. ${nm} (${tm}) right footed shot from the centre of the box to the bottom right corner. Assisted by ${as.athlete.displayName}.`;
+        key.push({ id:String(kid++), type:{ text:"Goal" }, text, period:per, clock, scoringPlay:true, team:team(s), participants:[ath(P), ath(as)] });
+        C(text);
+      } else if (q < .45) C(`Attempt saved. ${nm} (${tm}) right footed shot from outside the box is saved in the centre of the goal.`);
+      else if (q < .8) C(`Attempt missed. ${nm} (${tm}) left footed shot from the left side of the box misses to the right.`);
+      else C(`Attempt blocked. ${nm} (${tm}) right footed shot from outside the box is blocked.`);
+    } else if (t.ev === "corner") C(`Corner, ${tm}. Conceded by ${pick(onPitch[other(s)]).athlete.displayName}.`);
+    else if (t.ev === "foul") C(`Foul by ${nm} (${tm}).`);
+    else if (t.ev === "offside") C(`Offside, ${tm}. ${nm} is caught offside.`);
+    else if (t.ev === "wood") C(`${nm} (${tm}) hits the ${pick(["bar","left post","right post"])} with a right footed shot from outside the box.`);
+    else if (t.ev === "var") C(`VAR Decision: ${pick(["No Penalty","Goal cancelled","No Goal","Penalty"])} ${tm}.`);
+    else if (t.ev === "added") C(`Fourth official has announced ${t.n} minutes of added time.`);
+    else if (t.ev === "yellow" || t.ev === "red"){
+      let typeText = t.ev === "red" ? "Red Card" : "Yellow Card";
+      if (t.ev === "yellow" && yellow.has(P.athlete.id)) typeText = "Red Card";
+      if (typeText === "Yellow Card") yellow.add(P.athlete.id);
+      const text = `${nm} (${tm}) is shown the ${typeText === "Red Card" ? "red" : "yellow"} card for a bad foul.`;
+      key.push({ id:String(kid++), type:{ text:typeText }, text, period:per, clock, scoringPlay:false, team:team(s), participants:[ath(P)] });
+      C(text);
+      if (typeText === "Red Card") onPitch[s] = onPitch[s].filter(x => x !== P);
+    } else if (t.ev === "sub"){
+      const pool = subsLeft[s]; if (!pool.length || !onPitch[s].length) continue;
+      const inP = pool.shift(), outP = pick(onPitch[s]);
+      onPitch[s] = onPitch[s].filter(x => x !== outP).concat([inP]);
+      const text = `Substitution, ${tm}. ${inP.athlete.displayName} replaces ${outP.athlete.displayName}.`;
+      key.push({ id:String(kid++), type:{ text:"Substitution" }, text, period:per, clock, scoringPlay:false, team:team(s), participants:[ath(inP), ath(outP)] });
+      C(text);
+    } else if (t.ev === "ht"){
+      key.push({ id:String(kid++), type:{ text:"Halftime" }, text:"First Half ends.", period:per, clock, scoringPlay:false });
+      com.push({ sequence:seq++, time:{ displayValue:lab }, text:`First Half ends, ${T.home.displayName} ${sc.home}, ${T.away.displayName} ${sc.away}.`, play:{ period:per } });
+    } else if (t.ev === "start2"){
+      com.push({ sequence:seq++, time:{ displayValue:"45'" }, text:"Second Half begins.", play:{ period:{ number:2 } } });
+    } else if (t.ev === "ft"){
+      key.push({ id:String(kid++), type:{ text:"End Regular Time" }, text:"Match ends.", period:per, clock, scoringPlay:false });
+    }
+  }
+  const comp = { date:new Date().toISOString(), status:{ type:{ state:"post", name:"STATUS_FULL_TIME" } },
+    competitors:["home","away"].map(s => ({ homeAway:s, score:String(sc[s]), record:[{ displayValue: s === "home" ? "5-2-1" : "4-2-2" }],
+      team:{ id:T[s].id, abbreviation:T[s].abbreviation, name:T[s].name, shortDisplayName:T[s].shortDisplayName, displayName:T[s].displayName, color:T[s].color, alternateColor:T[s].alternateColor } })) };
+  return { header:{ competitions:[comp] }, keyEvents:key, commentary:com,
+    rosters:["home","away"].map(s => ({ homeAway:s, formation:T[s].formation, team:{ id:T[s].id }, roster:roster[s] })), boxscore:{ teams:[] } };
+}
+
+/* ---------------- start ---------------- */
+(async () => {
+  if (cfg.demo){ playBack(demoRaw()); return; }
+  if (cfg.replay){
+    try{
+      if (!eventId) eventId = await discover();
+      if (!eventId){ showNoGame(); return; }
+      const raw = await getJSON(`${base()}/summary?event=${encodeURIComponent(eventId)}`);
+      playBack(raw);
+    }catch(e){ console.warn(e); setStatus("stale", "Couldn't load that match"); }
+    return;
+  }
+  tick(); setInterval(tick, cfg.poll * 1000);
+})();
+</script>
+</body>
+</html>
