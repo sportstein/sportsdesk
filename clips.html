@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SportsDesk Clips</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* SportsDesk clips: turn a 16:9 replay-buffer clip into a branded 9:16 vertical */
+:root{
+  --chair:#c41e1e; --desk:#1a5fa8; --ink:#07070f; --slate:#151522; --slate2:#1d1d2c; --line:#2a2a3e;
+  --chalk:#f3f1ea; --dim:#8b8ba3; --pencil:#ffcf33;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ink);color:var(--chalk);font-family:"Barlow Semi Condensed","Arial Narrow",sans-serif;font-size:17px;min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--pencil);outline-offset:2px}
+
+header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line)}
+.brand{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:22px;background:var(--chair);padding:2px 10px 1px}
+header h1{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:22px}
+header p{color:var(--dim);margin-left:auto;font-weight:600}
+
+main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;padding:20px;max-width:1500px;margin:0 auto}
+@media (max-width:1000px){ main{grid-template-columns:1fr} }
+
+.drop{border:2px dashed var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  min-height:300px;text-align:center;padding:30px;cursor:pointer}
+.drop.over{border-color:var(--pencil);background:var(--slate)}
+.drop b{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:30px}
+.drop span{color:var(--dim);max-width:46ch}
+
+.src{position:relative;background:#000;display:none;user-select:none;touch-action:none;overflow:hidden}
+.src.on{display:block}
+.src video{display:block;width:100%;height:auto}
+.box{position:absolute;border:3px solid var(--pencil);cursor:move;box-shadow:0 0 0 9999px rgba(7,7,15,.45)}
+.box.bugbox{border-color:#6fb3ff;box-shadow:none}
+.box span{position:absolute;left:0;top:0;background:var(--pencil);color:var(--ink);font-weight:700;font-size:14px;padding:3px 8px;white-space:nowrap}
+.box.bugbox span{background:#6fb3ff}
+.box.hidden{display:none}
+
+.trim{display:none;margin-top:14px;background:var(--slate);padding:14px 16px}
+.trim.on{display:block}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.trim .row + .row{margin-top:10px}
+.trim label{font-weight:700;width:46px}
+.trim input[type=range]{flex:1;accent-color:var(--chair)}
+.trim output{width:56px;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);font-weight:600}
+.hint{color:var(--dim);font-size:15px;margin-top:8px}
+
+aside{display:flex;flex-direction:column;gap:14px}
+.preview{background:var(--slate);padding:14px;display:flex;justify-content:center}
+.preview canvas{width:100%;max-width:300px;aspect-ratio:9/16;background:var(--ink);display:block}
+.panel{background:var(--slate);padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.panel h2{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:19px;color:var(--dim)}
+.field{display:flex;flex-direction:column;gap:5px}
+.field > span{font-weight:700;font-size:15px}
+.field input[type=text]{background:var(--ink);border:1px solid var(--line);padding:8px 10px;font-weight:600}
+.field input[type=range]{accent-color:var(--chair)}
+.check{display:flex;gap:8px;align-items:center;font-weight:600}
+.check input{accent-color:var(--chair);width:18px;height:18px}
+
+.btn{border:0;padding:12px 16px;font-weight:700;cursor:pointer;background:var(--desk)}
+.btn.main{background:var(--chair);font-size:19px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;gap:8px}
+.btns .btn{flex:1}
+.bar{height:8px;background:var(--ink);display:none}
+.bar.on{display:block}
+.bar i{display:block;height:100%;width:0;background:var(--chair);transition:width .2s linear}
+.status{color:var(--dim);font-weight:600;min-height:1.3em}
+.dl{display:none;background:var(--ink);border-left:6px solid #3ec46d;padding:10px 12px;font-weight:700}
+.dl.on{display:block}
+.dl a{color:var(--chalk)}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">SportsDesk</span>
+  <h1>Clips</h1>
+  <p>Drop a replay clip, frame it, export a vertical for TikTok, Shorts and Reels.</p>
+</header>
+
+<main>
+  <section>
+    <label class="drop" id="drop" for="file">
+      <b>Drop a clip here</b>
+      <span>Or click to choose one from your Clips folder. MP4 works best: set OBS's recording format to MP4 or Fragmented MP4.</span>
+      <input type="file" id="file" accept="video/*" hidden>
+    </label>
+    <div class="src" id="src">
+      <video id="vid" playsinline preload="auto"></video>
+      <div class="box" id="mainBox"><span>Main shot</span></div>
+      <div class="box bugbox" id="bugBox"><span>Scorebug</span></div>
+    </div>
+    <div class="trim" id="trim">
+      <div class="row"><label for="tin">In</label><input type="range" id="tin" min="0" max="1" step="0.05" value="0"><output id="tinv">0:00</output></div>
+      <div class="row"><label for="tout">Out</label><input type="range" id="tout" min="0" max="1" step="0.05" value="1"><output id="toutv">0:00</output></div>
+      <p class="hint">Drag the yellow box over what the main shot should show (you, the tracker, or both). Drag the blue box over the scorebug and alerts. Mouse wheel over a box resizes it.</p>
+    </div>
+  </section>
+
+  <aside>
+    <div class="preview"><canvas id="out" width="1080" height="1920"></canvas></div>
+    <div class="panel">
+      <h2>Text</h2>
+      <label class="field"><span>Caption (top of the clip)</span><input type="text" id="cap" maxlength="60" placeholder="Brown from the corner!"></label>
+      <label class="field"><span>Strip under SportsDesk</span><input type="text" id="show" maxlength="24" value="Live call"></label>
+      <label class="field"><span>Footer (where to find you)</span><input type="text" id="handle" maxlength="40" placeholder="twitch.tv/yourname"></label>
+    </div>
+    <div class="panel">
+      <h2>Framing</h2>
+      <label class="field"><span>Main shot size</span><input type="range" id="mainZoom" min="0.3" max="1" step="0.01" value="1"></label>
+      <label class="check"><input type="checkbox" id="useBug" checked> Show the scorebug panel</label>
+      <label class="field"><span>Scorebug size</span><input type="range" id="bugZoom" min="0.2" max="1" step="0.01" value="0.47"></label>
+    </div>
+    <div class="panel">
+      <div class="btns">
+        <button class="btn" id="play" disabled>Preview</button>
+        <button class="btn main" id="export" disabled>Export vertical</button>
+      </div>
+      <div class="bar" id="bar"><i></i></div>
+      <p class="status" id="status">Choose a clip to start.</p>
+      <p class="dl" id="dl"></p>
+    </div>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const vid = $("#vid"), out = $("#out"), g = out.getContext("2d");
+const W = 1080, H = 1920;
+
+/* Layout of the vertical (pixels on the 1080x1920 output) */
+const L = { tag:{ x:60, y:64, w:300, red:78, blue:40 }, capY:214, main:{ y:400, h:1100 }, bug:{ y:1530, maxH:250 }, rule:1822, foot:1882 };
+const MAIN_ASPECT = W / L.main.h;            // width / height of the main slot
+
+/* Crop boxes in source-video pixels */
+const st = { main:null, bug:null, mainZoom:1, bugZoom:.47, bugAspect:4.6, useBug:true, ready:false, exporting:false };
+
+/* ---- remember text and framing between sessions (optional) ---- */
+const KEY = "sportsdesk-clips";
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ show:$("#show").value, handle:$("#handle").value, main:st.main, bug:st.bug, mainZoom:st.mainZoom, bugZoom:st.bugZoom, useBug:st.useBug })); }catch(e){} }
+let saved = null;
+try{ saved = JSON.parse(localStorage.getItem(KEY) || "null"); }catch(e){}
+if (saved){
+  if (saved.show) $("#show").value = saved.show;
+  if (saved.handle) $("#handle").value = saved.handle;
+  if (saved.mainZoom) $("#mainZoom").value = st.mainZoom = saved.mainZoom;
+  if (saved.bugZoom) $("#bugZoom").value = st.bugZoom = saved.bugZoom;
+  if (typeof saved.useBug === "boolean") $("#useBug").checked = st.useBug = saved.useBug;
+}
+
+/* ---- loading a clip ---- */
+const drop = $("#drop");
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); });
+$("#file").addEventListener("change", e => { if (e.target.files[0]) load(e.target.files[0]); });
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => { e.preventDefault(); if (e.dataTransfer.files[0] && !st.exporting) load(e.dataTransfer.files[0]); });
+
+let srcName = "clip";
+function load(file){
+  srcName = file.name.replace(/\.[^.]+$/, "");
+  vid.src = URL.createObjectURL(file);
+  $("#status").textContent = "Loading…";
+  $("#dl").classList.remove("on");
+}
+vid.addEventListener("error", () => {
+  $("#status").textContent = "This browser can't play that file. In OBS set Settings, Output, Recording Format to MP4 or Fragmented MP4, then save a new clip.";
+});
+vid.addEventListener("loadedmetadata", () => {
+  const vw = vid.videoWidth, vh = vid.videoHeight;
+  // default framing: main = centre of frame, bug = bottom-left where the SportsDesk bug lives
+  const fit = (z, aspect) => { let h = vh * z, w = h * aspect; if (w > vw){ w = vw; h = w / aspect; } return { w, h }; };
+  const m = fit(st.mainZoom, MAIN_ASPECT);
+  const sm = saved && saved.main && saved.main.vw === vw ? saved.main : null;
+  st.main = sm || { x:(vw - m.w) / 2, y:(vh - m.h) / 2, w:m.w, h:m.h, vw };
+  const bw = vw * st.bugZoom, bh = bw / st.bugAspect;
+  const sb = saved && saved.bug && saved.bug.vw === vw ? saved.bug : null;
+  st.bug = sb || { x: vw * 0.02, y: vh - bh - vh * 0.03, w:bw, h:bh, vw };
+  clampAll();
+  const d = vid.duration;
+  for (const id of ["#tin","#tout"]){ $(id).max = d.toFixed(2); }
+  $("#tin").value = Math.max(0, d - 30 > 0 ? 0 : 0); $("#tout").value = d.toFixed(2);
+  showTrim();
+  drop.style.display = "none"; $("#src").classList.add("on"); $("#trim").classList.add("on");
+  $("#play").disabled = $("#export").disabled = false;
+  st.ready = true;
+  $("#status").textContent = `${srcName}: ${vw}×${vh}, ${fmt(d)} long. Frame it, then export.`;
+  vid.currentTime = 0.01;
+  placeBoxes(); draw();
+});
+vid.addEventListener("seeked", draw);
+
+/* ---- trim ---- */
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2,"0")}`;
+function showTrim(){ $("#tinv").textContent = fmt(+$("#tin").value); $("#toutv").textContent = fmt(+$("#tout").value); }
+$("#tin").addEventListener("input", () => { if (+$("#tin").value > +$("#tout").value - 1) $("#tin").value = +$("#tout").value - 1; showTrim(); vid.currentTime = +$("#tin").value; });
+$("#tout").addEventListener("input", () => { if (+$("#tout").value < +$("#tin").value + 1) $("#tout").value = +$("#tin").value + 1; showTrim(); vid.currentTime = +$("#tout").value; });
+
+/* ---- crop boxes: drag to move, wheel or slider to resize ---- */
+function clamp(b){
+  const vw = vid.videoWidth, vh = vid.videoHeight;
+  b.w = Math.min(b.w, vw); b.h = Math.min(b.h, vh);
+  b.x = Math.max(0, Math.min(vw - b.w, b.x)); b.y = Math.max(0, Math.min(vh - b.h, b.y));
+}
+function clampAll(){ clamp(st.main); clamp(st.bug); }
+function resize(which, z){
+  const b = st[which], cx = b.x + b.w / 2, cy = b.y + b.h / 2, vw = vid.videoWidth, vh = vid.videoHeight;
+  if (which === "main"){ let h = vh * z, w = h * MAIN_ASPECT; if (w > vw){ w = vw; h = w / MAIN_ASPECT; } b.w = w; b.h = h; }
+  else { b.w = vw * z; b.h = b.w / st.bugAspect; }
+  b.x = cx - b.w / 2; b.y = cy - b.h / 2; clamp(b);
+  placeBoxes(); draw(); save();
+}
+function placeBoxes(){
+  if (!st.ready && !st.main) return;
+  const s = vid.clientWidth / vid.videoWidth;
+  for (const [id, b] of [["#mainBox", st.main], ["#bugBox", st.bug]]){
+    const el = $(id); el.style.left = b.x * s + "px"; el.style.top = b.y * s + "px"; el.style.width = b.w * s + "px"; el.style.height = b.h * s + "px";
+  }
+  $("#bugBox").classList.toggle("hidden", !st.useBug);
+}
+window.addEventListener("resize", placeBoxes);
+for (const [id, which] of [["#mainBox","main"],["#bugBox","bug"]]){
+  const el = $(id);
+  el.addEventListener("pointerdown", e => {
+    e.preventDefault(); el.setPointerCapture(e.pointerId);
+    const s = vid.clientWidth / vid.videoWidth, b = st[which], sx = e.clientX, sy = e.clientY, ox = b.x, oy = b.y;
+    const move = ev => { b.x = ox + (ev.clientX - sx) / s; b.y = oy + (ev.clientY - sy) / s; clamp(b); placeBoxes(); draw(); };
+    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); save(); };
+    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up);
+  });
+  el.addEventListener("wheel", e => {
+    e.preventDefault();
+    const slider = which === "main" ? $("#mainZoom") : $("#bugZoom");
+    slider.value = Math.max(+slider.min, Math.min(+slider.max, +slider.value + (e.deltaY > 0 ? -0.02 : 0.02)));
+    st[which + "Zoom"] = +slider.value; resize(which, +slider.value);
+  }, { passive:false });
+}
+$("#mainZoom").addEventListener("input", e => { st.mainZoom = +e.target.value; if (st.ready) resize("main", st.mainZoom); });
+$("#bugZoom").addEventListener("input", e => { st.bugZoom = +e.target.value; if (st.ready) resize("bug", st.bugZoom); });
+$("#useBug").addEventListener("change", e => { st.useBug = e.target.checked; placeBoxes(); draw(); save(); });
+for (const id of ["#cap","#show","#handle"]) $(id).addEventListener("input", () => { draw(); save(); });
+
+/* ---- drawing the vertical ---- */
+function wrap(text, maxW, font){
+  g.font = font;
+  const words = text.split(/\s+/).filter(Boolean), lines = [];
+  let line = "";
+  for (const w of words){
+    const t = line ? line + " " + w : w;
+    if (g.measureText(t).width > maxW && line){ lines.push(line); line = w; } else line = t;
+  }
+  if (line) lines.push(line);
+  return lines.slice(0, 2);
+}
+function draw(){
+  g.fillStyle = "#07070f"; g.fillRect(0, 0, W, H);
+
+  // brand tag, same as the scorebug
+  const T = L.tag;
+  g.fillStyle = "#c41e1e"; g.fillRect(T.x, T.y, T.w, T.red);
+  g.fillStyle = "#1a5fa8"; g.fillRect(T.x, T.y + T.red, T.w, T.blue);
+  g.fillStyle = "#f3f1ea"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.font = '900 52px "Big Shoulders Display", "Arial Narrow", sans-serif'; g.fillText("SportsDesk", T.x + T.w / 2, T.y + T.red / 2 + 3);
+  g.font = '700 26px "Barlow Semi Condensed", "Arial Narrow", sans-serif'; g.fillText($("#show").value || "Live call", T.x + T.w / 2, T.y + T.red + T.blue / 2 + 1);
+
+  // caption
+  const cap = $("#cap").value.trim();
+  if (cap){
+    const font = '900 84px "Big Shoulders Display", "Arial Narrow", sans-serif';
+    const lines = wrap(cap, W - 120, font);
+    g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillStyle = "#f3f1ea"; g.font = font;
+    lines.forEach((ln, i) => g.fillText(ln, 60, L.capY + 70 + i * 80));
+  }
+
+  // main shot
+  if (st.main && vid.readyState >= 2){
+    const b = st.main;
+    g.drawImage(vid, b.x, b.y, b.w, b.h, 0, L.main.y, W, L.main.h);
+  } else { g.fillStyle = "#151522"; g.fillRect(0, L.main.y, W, L.main.h); }
+
+  // scorebug panel
+  if (st.useBug && st.bug && vid.readyState >= 2){
+    const b = st.bug, w = W - 80, h = Math.min(L.bug.maxH, w / (b.w / b.h));
+    const dw = h * (b.w / b.h);
+    g.fillStyle = "#151522"; g.fillRect(40, L.bug.y, W - 80, L.bug.maxH);
+    g.drawImage(vid, b.x, b.y, b.w, b.h, 40 + (W - 80 - dw) / 2, L.bug.y + (L.bug.maxH - h) / 2, dw, h);
+  }
+
+  // footer: red/blue rule + where to find you
+  g.fillStyle = "#c41e1e"; g.fillRect(60, L.rule, (W - 120) * .4, 10);
+  g.fillStyle = "#1a5fa8"; g.fillRect(60 + (W - 120) * .4, L.rule, (W - 120) * .6, 10);
+  g.fillStyle = "#f3f1ea"; g.textAlign = "left"; g.textBaseline = "alphabetic";
+  g.font = '700 46px "Barlow Semi Condensed", "Arial Narrow", sans-serif';
+  g.fillText($("#handle").value || "", 60, L.foot);
+}
+document.fonts && document.fonts.ready.then(draw);
+
+/* ---- preview and export ---- */
+let raf = 0;
+function loop(){ draw(); if (!vid.paused && !vid.ended){ if (vid.currentTime >= +$("#tout").value){ vid.pause(); if (!st.exporting) vid.currentTime = +$("#tin").value; } raf = requestAnimationFrame(loop); } }
+$("#play").addEventListener("click", () => {
+  if (!vid.paused){ vid.pause(); $("#play").textContent = "Preview"; return; }
+  vid.currentTime = +$("#tin").value; vid.muted = false; vid.play(); $("#play").textContent = "Stop";
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+});
+vid.addEventListener("pause", () => { $("#play").textContent = "Preview"; draw(); });
+
+let audioCtx = null, audioDest = null;
+function audioTracks(){
+  try{
+    if (!audioCtx){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const srcNode = audioCtx.createMediaElementSource(vid);
+      audioDest = audioCtx.createMediaStreamDestination();
+      srcNode.connect(audioDest); srcNode.connect(audioCtx.destination);
+    }
+    audioCtx.resume();
+    return audioDest.stream.getAudioTracks();
+  }catch(e){ console.warn("No audio:", e); return []; }
+}
+function pickType(){
+  const types = ["video/mp4;codecs=avc1.640028,mp4a.40.2","video/mp4;codecs=avc1,mp4a","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+  return types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
+}
+$("#export").addEventListener("click", async () => {
+  if (st.exporting) return;
+  const type = pickType();
+  if (!type){ $("#status").textContent = "This browser can't record video. Use Chrome."; return; }
+  st.exporting = true; $("#export").disabled = $("#play").disabled = true; $("#dl").classList.remove("on");
+  const tin = +$("#tin").value, tout = +$("#tout").value, len = tout - tin;
+  const stream = out.captureStream(30);
+  audioTracks().forEach(t => stream.addTrack(t));
+  const rec = new MediaRecorder(stream, { mimeType:type, videoBitsPerSecond:10_000_000, audioBitsPerSecond:192_000 });
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  const done = new Promise(r => rec.onstop = r);
+  vid.pause(); vid.currentTime = tin; await new Promise(r => vid.addEventListener("seeked", r, { once:true }));
+  draw();
+  $("#bar").classList.add("on"); $("#status").textContent = `Recording ${fmt(len)} in real time. Keep this tab open.`;
+  rec.start(250); vid.muted = false; await vid.play();
+  cancelAnimationFrame(raf);
+  const tickExport = () => {
+    draw();
+    $("#bar i").style.width = Math.min(100, (vid.currentTime - tin) / len * 100) + "%";
+    if (vid.currentTime >= tout || vid.ended){ vid.pause(); rec.stop(); return; }
+    requestAnimationFrame(tickExport);
+  };
+  requestAnimationFrame(tickExport);
+  await done;
+  const blob = new Blob(chunks, { type:type.split(";")[0] });
+  const ext = type.startsWith("video/mp4") ? "mp4" : "webm";
+  const name = `sportsdesk-${($("#cap").value.trim() || srcName).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40) || "clip"}.${ext}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = name; a.textContent = `Download ${name}`;
+  $("#dl").replaceChildren(a); $("#dl").classList.add("on");
+  a.click();
+  $("#status").textContent = ext === "mp4" ? "Done. It's downloading now." : "Done. Saved as WebM: TikTok and YouTube take it, but Instagram may want it converted to MP4.";
+  $("#bar").classList.remove("on"); $("#bar i").style.width = "0";
+  st.exporting = false; $("#export").disabled = $("#play").disabled = false;
+  vid.currentTime = tin;
+});
+draw();
+</script>
+</body>
+</html>
