@@ -124,7 +124,7 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
   <span class="brand">SportsDesk</span>
   <span class="t">Spotting board</span>
   <span class="status" id="status"><i></i><span id="statusTxt">Loading</span></span>
-  <form id="f"><label for="team">Team</label><input id="team" maxlength="4" autocomplete="off"><button>Load</button></form>
+  <form id="f"><label for="team">Team</label><input id="team" maxlength="4" autocomplete="off"><label for="delay">Delay</label><input id="delay" type="number" min="0" max="120" step="1" inputmode="numeric" style="width:58px;text-transform:none" title="Seconds to hold live stats and alerts back so they match your video"><button>Apply</button></form>
   <button class="pbtn" id="print" type="button">Print</button>
 </div>
 <div class="msg" id="msg"></div>
@@ -142,14 +142,23 @@ const cfg = {
   event: P.get("event") || "",
   league: P.get("league") || "nba",
   days: Math.min(30, +(P.get("days") || 10)),
-  poll: Math.max(8, +(P.get("poll") || 15))
+  delay: Math.max(0, Math.min(120, +(P.get("delay") || 0))),
+  poll: Math.max(5, +(P.get("poll") || (P.get("delay") ? 5 : 15)))
 };
 const BASE = `https://site.api.espn.com/apis/site/v2/sports/basketball/${cfg.league}`;
 const ATH = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/${cfg.league}/athletes`;
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 $("#team").value = cfg.team;
-$("#f").addEventListener("submit", e => { e.preventDefault(); const t = $("#team").value.trim().toUpperCase(); if (!t) return; P.set("team", t); P.delete("event"); location.search = P.toString(); });
+$("#delay").value = cfg.delay || "";
+$("#f").addEventListener("submit", e => {
+  e.preventDefault();
+  const t = $("#team").value.trim().toUpperCase(); if (!t) return;
+  if (t !== cfg.team){ P.set("team", t); P.delete("event"); }
+  const d = Math.max(0, Math.min(120, parseInt($("#delay").value, 10) || 0));
+  if (d) P.set("delay", d); else P.delete("delay");
+  location.search = P.toString();
+});
 $("#print").addEventListener("click", () => window.print());
 
 const store = {
@@ -244,7 +253,8 @@ async function load(){
   const avgs = await pool(all, 6, p => seasonOf(p.id));
   all.forEach((p, i) => p.season = avgs[i]);
   renderTeams();
-  applyLive(sum);
+  if (cfg.delay > 0) snaps.push({ t:Date.now(), sum });
+  else applyLive(sum);
   tick();
 }
 
@@ -252,7 +262,7 @@ async function load(){
 function feedUrl(){
   const q = new URLSearchParams({ view:"feed", event:S.ev, team:cfg.team });
   if (cfg.league !== "nba") q.set("league", cfg.league);
-  if (P.get("delay")) q.set("delay", P.get("delay"));
+  if (cfg.delay) q.set("delay", cfg.delay);
   return new URL("./?" + q.toString(), location.href).href;
 }
 
@@ -394,12 +404,21 @@ function applyLive(sum){
 const ON_COURT_OK = P.get("oncourt") !== "0";
 
 let timer = null;
+const snaps = []; let shown = null;
 async function tick(){
   clearTimeout(timer);
   try{
-    const sum = await J(`${BASE}/summary?event=${S.ev}`);
+    let sum = await J(`${BASE}/summary?event=${S.ev}`);
+    if (cfg.delay > 0){
+      // hold live stats back so they line up with your video
+      snaps.push({ t:Date.now(), sum });
+      const cutoff = Date.now() - cfg.delay * 1000;
+      while (snaps.length && snaps[0].t <= cutoff) shown = snaps.shift().sum;
+      if (!shown){ setStatus("", `Lining up a ${cfg.delay}s delay…`); timer = setTimeout(tick, cfg.poll * 1000); return; }
+      sum = shown;
+    }
     applyLive(sum);
-    if (S.state === "in") setStatus("live", "Live, updated " + new Date().toLocaleTimeString([], { hour:"numeric", minute:"2-digit", second:"2-digit" }));
+    if (S.state === "in") setStatus("live", `Live${cfg.delay ? `, ${cfg.delay}s delay` : ""}, updated ` + new Date().toLocaleTimeString([], { hour:"numeric", minute:"2-digit", second:"2-digit" }));
     else if (S.state === "post") setStatus("", "Final");
     else setStatus("", "Pregame, checks for starters every minute");
   }catch(e){ setStatus("", "Feed not responding, retrying"); }

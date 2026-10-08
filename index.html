@@ -253,7 +253,7 @@ body.feedonly .f-item:first-child .f-head{font-size:26px}
     <div class="m-bar">
       <span class="m-brand">SportsDesk</span>
       <span class="m-status" id="mStatus"><i></i><span id="mStatusTxt">Connecting</span></span>
-      <form id="mForm"><label for="mTeam">Team</label><input id="mTeam" maxlength="4" autocomplete="off"><button type="submit">Follow</button></form>
+      <form id="mForm"><label for="mTeam">Team</label><input id="mTeam" maxlength="4" autocomplete="off"><label for="mDelay">Delay</label><input id="mDelay" type="number" min="0" max="120" step="1" inputmode="numeric" style="width:58px;text-transform:none" title="Seconds to hold everything back so it matches your video"><button type="submit">Apply</button></form>
     </div>
     <div class="m-msg" id="mMsg"></div>
     <div class="m-score">
@@ -344,11 +344,14 @@ if (MONITOR){
   $("#mInact").addEventListener("change", e => { $("#mBox").classList.toggle("show-inactive", e.target.checked); setPref("inact", e.target.checked ? "1" : "0"); });
   document.title = "SportsDesk host monitor";
   $("#mTeam").value = cfg.team;
+  $("#mDelay").value = cfg.delay || "";
   $("#mForm").addEventListener("submit", e => {
     e.preventDefault();
     const t = $("#mTeam").value.trim().toUpperCase();
     if (!t) return;
-    P.set("team", t); P.delete("event");
+    if (t !== cfg.team){ P.set("team", t); P.delete("event"); }
+    const d = Math.max(0, Math.min(120, parseInt($("#mDelay").value, 10) || 0));
+    if (d) P.set("delay", d); else P.delete("delay");
     location.search = P.toString();
   });
 }
