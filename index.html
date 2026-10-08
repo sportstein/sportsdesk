@@ -870,9 +870,11 @@ function runEngine(m, silent){
   const B = m.baskets || [];
   if (B.length < E.bIdx) E.bIdx = 0;
   const lastBy = {};
-  for (let i = E.bIdx; i < B.length; i++){
+  // first load on the monitor: backfill the last 25 baskets so the feed isn't empty mid-game
+  const from = silent && MONITOR ? Math.max(E.bIdx, B.length - 25) : E.bIdx;
+  for (let i = from; i < B.length; i++){
     const b = B[i]; lastBy[b.side] = b;
-    if (!silent && MONITOR) feedOnly({ bk:true, color:team(b.side).color, kicker:`${team(b.side).abbr} +${b.pts}`, head:b.text,
+    if (MONITOR) feedOnly({ bk:true, color:team(b.side).color, kicker:`${team(b.side).abbr} +${b.pts}`, head:b.text,
       stamp:`${periodName(b.period)} ${b.clock}` });
   }
   E.bIdx = B.length;
