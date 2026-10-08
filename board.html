@@ -46,10 +46,13 @@ button,input,textarea{font:inherit;color:inherit}
 .mid span{font-weight:600;font-size:14px}
 
 /* context strip */
-.ctx{display:grid;grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr));gap:12px;margin:12px 18px 0}
-@media (max-width:1100px){ .ctx{grid-template-columns:1fr 1fr} .ctx .alerts{grid-column:1 / -1} }
+.ctx{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px;margin:12px 18px 0;align-items:stretch}
+@media (max-width:900px){ .ctx{grid-template-columns:1fr} }
+.ctx .side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.ctx .side .box{padding:8px 12px}
+.ctx .side .box h3{font-size:15px;margin-bottom:3px}
 .ctx .alerts{display:flex;flex-direction:column}
-.ctx .alerts iframe{width:100%;height:300px;border:0;background:var(--ink);display:block}
+.ctx .alerts iframe{width:100%;flex:1;min-height:240px;border:0;background:var(--ink);display:block}
 .box{background:var(--slate);padding:10px 12px}
 .box h3{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:17px;color:var(--dim);margin-bottom:6px}
 .l5{display:flex;flex-direction:column;gap:4px}
@@ -115,6 +118,7 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
   .pc .name{font-size:14px}
   .note:placeholder-shown{display:none}
   .ctx .alerts{display:none}
+  .ctx{grid-template-columns:1fr} .ctx .side{flex-direction:row} .ctx .side .box{flex:1}
   .wl i.W{background:#cfe9d8}.wl i.L{background:#f2cccc}
 }
 </style>
@@ -291,6 +295,7 @@ function renderShell(sum, comp){
     const outs = S.teams[s].players.filter(p => p.inj);
     return `<div><b>${esc(S.teams[s].abbr)}</b> ${outs.length ? outs.map(p => `${esc(p.short)} <span class="dim">${esc(p.inj)}</span>`).join(", ") : '<span class="dim">none listed</span>'}</div>`;
   }).join("");
+  const hasL5 = (sum.lastFiveGames || []).some(t => (t.events || []).length);
   $("#app").innerHTML = `
     <div class="match">
       <div class="mt" style="--tc:${A.color}"><div><div class="ab">${esc(A.abbr)}</div><div class="nm">${esc(A.name)}</div><div class="rec">${esc(A.rec)}</div></div><div class="sc" id="scA"></div></div>
@@ -299,9 +304,11 @@ function renderShell(sum, comp){
     </div>
     <div class="ctx">
       <div class="box alerts"><h3>Live alerts</h3><iframe id="feed" title="Live alerts" src="${esc(feedUrl())}"></iframe></div>
-      <div class="box"><h3>Last five</h3><div class="l5">${l5("away")}${l5("home")}</div></div>
-      <div class="box"><h3>Season series</h3><div class="list">${seriesTxt}</div></div>
-      <div class="box"><h3>Injury report</h3><div class="list">${injuries}</div></div>
+      <div class="side">
+        ${hasL5 ? `<div class="box"><h3>Last five</h3><div class="l5">${l5("away")}${l5("home")}</div></div>` : ""}
+        <div class="box"><h3>Season series</h3><div class="list">${seriesTxt}</div></div>
+        <div class="box"><h3>Injury report</h3><div class="list">${injuries}</div></div>
+      </div>
     </div>
     <div class="teams" id="teams"></div>`;
 
