@@ -263,13 +263,16 @@ const DEFAULTS = {
   speed:  1.2,         // replay/demo: seconds per match minute
   off:    null,        // alerts to switch off; overlay defaults to off=subs
   pressure: 4,         // shots in 10 minutes for a pressure alert
-  stretch:  80         // minute the final stretch starts
+  stretch:  80,        // minute the final stretch starts
+  delay:    0          // seconds to hold everything back so it matches your video (e.g. delay=25)
 };
 const P = new URLSearchParams(location.search);
 const cfg = {};
 for (const k in DEFAULTS) cfg[k] = P.has(k) ? P.get(k) : DEFAULTS[k];
 cfg.team = String(cfg.team).toUpperCase();
-["poll","scale","speed","pressure","stretch"].forEach(k => cfg[k] = Number(cfg[k]) || DEFAULTS[k]);
+["poll","scale","speed","pressure","stretch","delay"].forEach(k => cfg[k] = Number(cfg[k]) || DEFAULTS[k]);
+cfg.delay = Math.max(0, Math.min(120, cfg.delay));
+if (cfg.delay && !P.has("poll")) cfg.poll = 5;
 cfg.poll = Math.max(5, cfg.poll);
 const truthy = v => v === true || v === "1" || v === "true";
 cfg.demo = truthy(cfg.demo); cfg.replay = truthy(cfg.replay);
@@ -838,17 +841,25 @@ emit = function(a){ a.stamp = feedStamp; _emit(a); };
 /* ---------------- live loop ---------------- */
 let fails = 0;
 let lastRediscover = Date.now();
+const snaps = []; let shown = null;
 async function tick(){
   try{
-    const m = await fetchLive();
+    let m = await fetchLive();
     if (!m){ showNoGame(); return; }
+    if (cfg.delay > 0){
+      snaps.push({ t:Date.now(), m });
+      const cutoff = Date.now() - cfg.delay * 1000;
+      while (snaps.length && snaps[0].t <= cutoff) shown = snaps.shift().m;
+      if (!shown){ setStatus("ok", `Lining up a ${cfg.delay}s delay…`); return; }
+      m = shown;
+    }
     frame(m, !E.seeded); E.seeded = true;
     fails = 0; bug.classList.remove("stale");
     if (!cfg.event && phase(m.status) === "ft" && Date.now() - lastRediscover > 600000){
       lastRediscover = Date.now(); lastMiss = 0;
       try{ const next = await discover(); if (next && next !== eventId) location.reload(); }catch(e){}
     }
-    setStatus("ok", "Live feed, updated " + new Date().toLocaleTimeString([], { hour:"numeric", minute:"2-digit", second:"2-digit" }));
+    setStatus("ok", `Live feed${cfg.delay ? `, ${cfg.delay}s delay` : ""}, updated ` + new Date().toLocaleTimeString([], { hour:"numeric", minute:"2-digit", second:"2-digit" }));
   }catch(e){
     fails++;
     if (fails >= 2){ bug.classList.add("stale"); setStatus("stale", "Feed not responding, showing last data"); }

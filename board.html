@@ -46,8 +46,10 @@ button,input,textarea{font:inherit;color:inherit}
 .mid span{font-weight:600;font-size:14px}
 
 /* context strip */
-.ctx{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 18px 0}
-@media (max-width:1100px){ .ctx{grid-template-columns:1fr 1fr} }
+.ctx{display:grid;grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr));gap:12px;margin:12px 18px 0}
+@media (max-width:1100px){ .ctx{grid-template-columns:1fr 1fr} .ctx .alerts{grid-column:1 / -1} }
+.ctx .alerts{display:flex;flex-direction:column}
+.ctx .alerts iframe{width:100%;height:300px;border:0;background:var(--ink);display:block}
 .box{background:var(--slate);padding:10px 12px}
 .box h3{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:17px;color:var(--dim);margin-bottom:6px}
 .l5{display:flex;flex-direction:column;gap:4px}
@@ -112,7 +114,7 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
   .pc .jn{font-size:26px}
   .pc .name{font-size:14px}
   .note:placeholder-shown{display:none}
-  textarea.story{border:0;min-height:0}
+  .ctx .alerts{display:none}
   .wl i.W{background:#cfe9d8}.wl i.L{background:#f2cccc}
 }
 </style>
@@ -246,6 +248,14 @@ async function load(){
   tick();
 }
 
+/* ---------- live alerts: the NBA page's alert feed, embedded ---------- */
+function feedUrl(){
+  const q = new URLSearchParams({ view:"feed", event:S.ev, team:cfg.team });
+  if (cfg.league !== "nba") q.set("league", cfg.league);
+  if (P.get("delay")) q.set("delay", P.get("delay"));
+  return new URL("./?" + q.toString(), location.href).href;
+}
+
 /* ---------- matchup header + context ---------- */
 function renderShell(sum, comp){
   const A = S.teams.away, H = S.teams.home;
@@ -278,14 +288,13 @@ function renderShell(sum, comp){
       <div class="mt home" style="--tc:${H.color}"><div><div class="ab">${esc(H.abbr)}</div><div class="nm">${esc(H.name)}</div><div class="rec">${esc(H.rec)}</div></div><div class="sc" id="scH"></div></div>
     </div>
     <div class="ctx">
-      <div class="box"><h3>Storylines</h3><textarea class="story" id="story" placeholder="Your talking points for tonight…"></textarea></div>
+      <div class="box alerts"><h3>Live alerts</h3><iframe id="feed" title="Live alerts" src="${esc(feedUrl())}"></iframe></div>
       <div class="box"><h3>Last five</h3><div class="l5">${l5("away")}${l5("home")}</div></div>
       <div class="box"><h3>Season series</h3><div class="list">${seriesTxt}</div></div>
       <div class="box"><h3>Injury report</h3><div class="list">${injuries}</div></div>
     </div>
     <div class="teams" id="teams"></div>`;
-  const story = $("#story"); story.value = store.get("story:" + S.ev);
-  story.addEventListener("input", () => store.set("story:" + S.ev, story.value));
+
 }
 
 /* ---------- player cards ---------- */
