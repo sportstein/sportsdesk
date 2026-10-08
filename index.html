@@ -124,8 +124,14 @@ body.monitor .mon{display:grid}
 }
 .m-top{grid-area:top}.m-now{grid-area:now}.m-feed{grid-area:feed}.m-box{grid-area:box}
 /* view=feed: just the alert feed, for embedding in the spotting board */
-body.feedonly .m-top,body.feedonly .m-now,body.feedonly .m-box{display:none}
-body.feedonly .mon{grid-template-columns:1fr;grid-template-areas:"feed";padding:8px;max-width:none}
+body.feedonly .m-now,body.feedonly .m-box,body.feedonly .m-bar,body.feedonly .m-wp,body.feedonly .m-feed .m-hrow{display:none}
+body.feedonly .mon{grid-template-columns:1fr;grid-template-areas:"top" "feed";padding:0 8px 8px;gap:8px;max-width:none}
+body.feedonly .m-top{position:sticky;top:0;z-index:2;background:var(--ink);padding-top:8px}
+body.feedonly .m-team{padding:6px 12px}
+body.feedonly .m-team b{font-size:24px}
+body.feedonly .m-team strong{font-size:38px}
+body.feedonly .m-clock{font-size:15px;padding:4px 12px;min-width:80px}
+body.feedonly .m-clock span{font-size:22px}
 body.feedonly .f-item:first-child .f-head{font-size:26px}
 
 .m-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-weight:600;font-size:15px;color:var(--dim)}
@@ -455,6 +461,7 @@ function parsePlays(plays, players, awayId){
       const s = sideOf[pid] || (p.team && String(p.team.id) === String(awayId) ? "away" : "home");
       if (pid) shots.push({ pid, side:s, made, three, ft, pts: made ? (Number(p.scoreValue) || (three?3:ft?1:2)) : 0, period, el });
       if (made && pid) baskets.push({ id: String(p.id || baskets.length), pid, side:s, pts: Number(p.scoreValue) || (three?3:ft?1:2), ft, three,
+        a: Number(p.awayScore), h: Number(p.homeScore),
         text: txt, period, clock: (p.clock && p.clock.displayValue) || "" });
     }
     const a = Number(p.awayScore), h = Number(p.homeScore);
@@ -874,7 +881,8 @@ function runEngine(m, silent){
   const from = silent && MONITOR ? Math.max(E.bIdx, B.length - 25) : E.bIdx;
   for (let i = from; i < B.length; i++){
     const b = B[i]; lastBy[b.side] = b;
-    if (MONITOR) feedOnly({ bk:true, color:team(b.side).color, kicker:`${team(b.side).abbr} +${b.pts}`, head:b.text,
+    const sc = Number.isFinite(b.a) && Number.isFinite(b.h) ? `, ${m.away.abbr} ${b.a}-${b.h} ${m.home.abbr}` : "";
+    if (MONITOR) feedOnly({ bk:true, color:team(b.side).color, kicker:`${team(b.side).abbr} +${b.pts}${sc}`, head:b.text,
       stamp:`${periodName(b.period)} ${b.clock}` });
   }
   E.bIdx = B.length;
@@ -1036,6 +1044,7 @@ function runDemo(){
   g.B = [];
   function score(p, pts, opts){
     g.B.push({ id:String(g.B.length), pid:p.id, side:p.side, pts, ft: pts === 1, three: pts === 3, period:g.period, clock:fmt(g.sec),
+      a: g.a + (p.side === "away" ? pts : 0), h: g.h + (p.side === "home" ? pts : 0),
       text:`${p.name} makes ${pts === 3 ? "a 26-foot three point jumper" : pts === 1 ? "free throw" : rand(["a driving layup","a 15-foot jumper","a dunk"])}` });
     if (p.side === "away") g.a += pts; else g.h += pts;
     g.lines[p.side][g.period-1] += pts;
