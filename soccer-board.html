@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SportsDesk Soccer Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="boardkit.css">
+<style>
+.pc .yc,.chip .yc{font-weight:800;font-size:12px;background:#e8c11c;color:#111;padding:1px 6px}
+.pc .rc{font-weight:800;font-size:12px;background:var(--chair);color:#fff;padding:1px 6px}
+.pc .gl{font-weight:800;font-size:12px;background:var(--pencil);color:#111;padding:1px 6px}
+.tbl{width:100%;border-collapse:collapse;font-weight:700;font-size:14px}
+.tbl td{padding:2px 4px;border-bottom:1px solid var(--line)}
+.tbl td:first-child{color:var(--dim);width:28px}
+.tbl tr.me td{color:var(--pencil)}
+</style>
+</head>
+<body>
+<script src="boardkit.js"></script>
+<script>
+/* ==================================================================
+   Soccer spotting board: Premier League and Champions League
+   https://sportstein.github.io/sportsdesk/soccer-board.html?team=ARS               (Premier League)
+   https://sportstein.github.io/sportsdesk/soccer-board.html?team=ARS&league=uefa.champions
+   Options: team, league (eng.1 | uefa.champions | any ESPN soccer league), event, delay, poll, days (default 14), view=feed
+   ================================================================== */
+const { esc } = SD;
+const LEAGUE = (SD.P.get("league") || "eng.1").toLowerCase();
+const LNAME = { "eng.1":"Premier League", "uefa.champions":"Champions League", "esp.1":"LaLiga", "ita.1":"Serie A", "ger.1":"Bundesliga", "fra.1":"Ligue 1", "usa.1":"MLS", "uefa.europa":"Europa League" }[LEAGUE] || "League";
+const SEASON_START = (() => { const n = new Date(); return n.getMonth() >= 6 ? n.getFullYear() : n.getFullYear() - 1; })();
+const SEASON_TAG = `${SEASON_START}-${String(SEASON_START + 1).slice(2)}`;
+const isGK = p => /^(G|GK)$/.test(p.pos);
+const n = x => parseFloat(x) || 0;
+
+function seasonFromRoster(a){
+  const cats = a.statistics && a.statistics.splits && a.statistics.splits.categories;
+  if (!cats) return null;
+  const o = {};
+  for (const c of cats) for (const s of c.stats || []) if (!(s.abbreviation in o)) o[s.abbreviation] = s.displayValue;
+  return o;
+}
+function sideOfTeam(id){ const S = SD.S; return String(id) === S.teams.away.id ? "away" : String(id) === S.teams.home.id ? "home" : null; }
+function minuteOf(k){ return (k.clock && k.clock.displayValue) || ""; }
+
+/* who's on, who scored, who's booked: lineups + key events */
+function parseLive(snap){
+  const out = {}, sum = snap.sum;
+  for (const r of sum.rosters || []){
+    for (const e of r.roster || []){
+      if (!e.athlete) continue;
+      const st = {}; for (const s of e.stats || []) st[s.abbreviation] = s.displayValue;
+      out[String(e.athlete.id)] = { starter:!!e.starter, subIn:!!e.subbedIn, subOut:!!e.subbedOut, fp:+e.formationPlace || 99, posLong:(e.position && (e.position.displayName || e.position.abbreviation)) || "", st, goals:[], assists:[], cards:[] };
+    }
+  }
+  const byName = {}; Object.values(SD.S.players).forEach(p => byName[p.name] = p.id);
+  for (const k of sum.keyEvents || []){
+    const ty = String((k.type && k.type.text) || ""), parts = (k.participants || []).map(x => x.athlete && String(x.athlete.id));
+    const m = minuteOf(k);
+    if (/goal/i.test(ty) && !/disallowed|no goal/i.test(ty)){
+      if (parts[0] && out[parts[0]]) out[parts[0]].goals.push(m + (/own/i.test(ty) ? " (OG)" : /penalty/i.test(ty) ? " (pen)" : ""));
+      if (parts[1] && out[parts[1]]) out[parts[1]].assists.push(m);
+    } else if (/yellow|red card/i.test(ty)){
+      if (parts[0] && out[parts[0]]) out[parts[0]].cards.push({ red:/red/i.test(ty), m });
+    } else if (/substitution/i.test(ty)){
+      const t = String(k.text || ""), mm = t.match(/\.\s*(.+?) replaces (.+?)(?:\s+because.*)?\.?$/i);
+      let inn = parts[0], off = parts[1];
+      if (mm){ inn = byName[mm[1].trim()] || inn; off = byName[mm[2].trim()] || off; }
+      if (inn && out[inn]) out[inn].onMin = m;
+      if (off && out[off]) out[off].offMin = m;
+    }
+  }
+  return out;
+}
+const onPitch = row => row && ((row.starter && !row.subOut) || (row.subIn && !row.subOut));
+
+function tonight(p, row){
+  const S = SD.S;
+  if (S.state === "pre" || !row) return null;
+  if (!row.starter && !row.subIn) return { label:"MATCH", none: S.state === "post" ? "Unused sub" : "On the bench" };
+  const st = row.st;
+  if (isGK(p)) return { label:"MATCH", items:[["SAVES", st.SV ?? 0], ["CONC", st.GA ?? 0, n(st.GA) ? "warn" : ""], ["SHOTS FACED", st.SHF ?? "–", "w"]] };
+  return { label:"MATCH", items:[["G", row.goals.length || st.G || 0, row.goals.length ? "up" : ""], ["A", row.assists.length || st.A || 0, row.assists.length ? "up" : ""],
+    ["SHOTS", st.SHOT ?? 0], ["ON TGT", st.SOG ?? 0, "w"], ["FOULS", st.FC ?? 0], ["FOULED", st.FA ?? 0, "w"], ["OFFS", st.OF ?? 0]] };
+}
+function badges(p, row){
+  const S = SD.S, b = [];
+  if (!row) return b;
+  if (S.state === "in" && onPitch(row)) b.push({ text:"On pitch", cls:"oncourt" });
+  if (row.onMin) b.push({ text:`On ${row.onMin}`, cls:"st5" });
+  if (row.offMin || (row.subOut && S.state !== "pre")) b.push({ text:`Off ${row.offMin || ""}`.trim(), cls:"st5" });
+  row.goals.forEach(m => b.push({ text:`Goal ${m}`, cls:"gl" }));
+  row.cards.forEach(c => b.push({ text:`${c.red ? "Red" : "Yellow"} ${c.m}`, cls:c.red ? "rc" : "yc" }));
+  if (row.posLong && row.starter) b.push({ text:row.posLong, cls:"st5" });
+  return b;
+}
+function seasonLine(p){
+  const s = p.season;
+  if (!s) return `<span class="lab">${esc(LNAME.toUpperCase())}</span>No appearances yet`;
+  const apps = n(s.APP), subs = n(s.SUB || s.SUBIN);
+  const lab = `<span class="lab">${esc(LNAME.toUpperCase())} · ${apps} APP${subs ? `, ${subs} SUB` : ""}</span>`;
+  if (isGK(p)) return lab + `<b>${esc(s.SV ?? 0)}</b> saves · <b>${esc(s.GA ?? 0)}</b> conceded`;
+  return lab + `<b>${esc(s.G ?? 0)}</b> goals · <b>${esc(s.A ?? 0)}</b> assists · <b>${esc(s.SHOT ?? 0)}</b> shots (<b>${esc(s.SOG ?? 0)}</b> on target) · <b>${esc(s.YC ?? 0)}</b> yellow`;
+}
+function seasonMini(p){
+  const s = p.season; if (!s) return "";
+  return isGK(p) ? `${esc(LNAME)} <b>${esc(s.SV ?? 0)} saves</b>` : `${esc(LNAME)} <b>${esc(s.G ?? 0)} G · ${esc(s.A ?? 0)} A</b> · ${esc(s.APP ?? 0)} apps`;
+}
+const POS = { G:1, D:2, M:3, F:4 };
+function groups(side){
+  const S = SD.S, team = S.teams[side], ps = team.players, L = S.live;
+  const inMatch = ps.filter(p => L[p.id]);
+  const out = [];
+  if (inMatch.some(p => L[p.id].starter)){
+    const xi = inMatch.filter(p => L[p.id].starter).sort((a, b) => L[a.id].fp - L[b.id].fp);
+    out.push({ label:`Starting XI${team.formation ? " · " + team.formation : ""}`, list:xi, cls:"floor" });
+    const subs = inMatch.filter(p => !L[p.id].starter && L[p.id].subIn);
+    if (subs.length) out.push({ label:"Subs used", list:subs, mini:true });
+    out.push({ label:"Bench", list:inMatch.filter(p => !L[p.id].starter && !L[p.id].subIn).sort((a, b) => (POS[a.pos] || 9) - (POS[b.pos] || 9)), mini:true });
+    const rest = ps.filter(p => !L[p.id]);
+    if (rest.length) out.push({ label:`Not in the squad (${rest.length})`, list:rest, fold:true, chips:true });
+  } else {
+    const by = k => ps.filter(p => (p.pos || "").startsWith(k)).sort((a, b) => n(b.season && b.season.APP) - n(a.season && a.season.APP) || n(b.season && b.season.G) - n(a.season && a.season.G));
+    out.push({ label:"Goalkeepers", list:by("G"), mini:true });
+    out.push({ label:"Defenders", list:by("D"), mini:true });
+    out.push({ label:"Midfielders", list:by("M"), mini:true });
+    out.push({ label:"Forwards (lineups post about an hour before kickoff)", list:by("F"), mini:true });
+  }
+  return out;
+}
+function chipLine(p, row){ const s = p.season; return s && n(s.G) ? `${s.G} G` : ""; }
+
+function clock(snap){
+  const st = snap.sum.header.competitions[0].status || {}, ty = st.type || {};
+  if (ty.state === "post") return { top:"FT", bottom: /pen/i.test(ty.detail || "") ? "Penalties" : /aet|extra/i.test(ty.detail || "") ? "AET" : "" };
+  if (/HALFTIME/.test(ty.name || "") || ty.shortDetail === "HT") return { top:"HT", bottom:"" };
+  const half = { 1:"1st half", 2:"2nd half", 3:"Extra time", 4:"Extra time", 5:"Penalties" }[st.period] || "";
+  return { top: st.displayClock || ty.shortDetail || "", bottom: half };
+}
+function pulse(snap){
+  const T = {}; for (const t of (snap.sum.boxscore && snap.sum.boxscore.teams) || []){ const sd = sideOfTeam(t.team.id); const o = T[sd] = {}; (t.statistics || []).forEach(x => o[x.name] = x.displayValue); }
+  if (!T.away || !T.home) return "";
+  const S = SD.S, A = S.teams.away.abbr, H = S.teams.home.abbr;
+  const pa = Math.round(n(T.away.possessionPct)), ph = Math.round(n(T.home.possessionPct));
+  return `<span class="grpx">Possession</span><span>${esc(A)} ${pa}% · ${esc(H)} ${ph}%</span>` +
+    `<span class="grpx">Shots (on target)</span><span>${esc(T.away.totalShots ?? 0)} (${esc(T.away.shotsOnTarget ?? 0)}) – ${esc(T.home.totalShots ?? 0)} (${esc(T.home.shotsOnTarget ?? 0)})</span>` +
+    `<span class="grpx">Corners</span><span>${esc(T.away.wonCorners ?? 0)}–${esc(T.home.wonCorners ?? 0)}</span>`;
+}
+function feed(snap){
+  const S = SD.S, items = [];
+  for (const k of snap.sum.keyEvents || []){
+    const ty = String((k.type && k.type.text) || ""), side = sideOfTeam(k.team && k.team.id), m = minuteOf(k), txt = String(k.text || "");
+    if (/kickoff|start delay|end delay/i.test(ty)) continue;
+    if (/goal/i.test(ty) && !/disallowed|no goal/i.test(ty)){
+      const sc = (txt.match(/^Goal!\s*([^.]+\.)/) || [])[1] || "";
+      items.push({ key:k.id, side, big:true, kicker:`GOAL${/own/i.test(ty) ? " (own goal)" : /penalty/i.test(ty) ? " (penalty)" : ""}${sc ? " · " + sc.replace(/\.$/, "") : ""}`, head:txt.replace(/^Goal!\s*[^.]+\.\s*/, ""), stamp:m });
+    } else if (/red card/i.test(ty)) items.push({ key:k.id, side, big:true, kicker:"Red card", head:txt, stamp:m });
+    else if (/yellow/i.test(ty)) items.push({ key:k.id, side, kicker:"Yellow card", head:txt, stamp:m });
+    else if (/substitution/i.test(ty)) items.push({ key:k.id, side, kicker:"Substitution", head:txt.replace(/^Substitution,\s*[^.]+\.\s*/, ""), stamp:m });
+    else if (/var|penalty|missed|saved/i.test(ty)) items.push({ key:k.id, side, big:/penalty/i.test(ty), kicker:ty, head:txt, stamp:m });
+    else if (/halftime|half ends|end regular|full time|match ends|second half begins/i.test(ty + " " + txt)) items.push({ key:k.id, side:null, kicker:ty, head:txt, stamp:m });
+  }
+  return items;
+}
+function teamRows(snap){
+  const T = {}; for (const t of (snap.sum.boxscore && snap.sum.boxscore.teams) || []){ const sd = sideOfTeam(t.team.id); const o = T[sd] = {}; (t.statistics || []).forEach(x => o[x.name] = x.displayValue); }
+  if (!T.away || !T.home) return null;
+  const row = (k, key, dir = 1, fmt) => T.away[key] === undefined ? null : [k, fmt ? fmt(T.away[key]) : T.away[key], fmt ? fmt(T.home[key]) : T.home[key], n(T.away[key]), n(T.home[key]), dir];
+  const pct = x => x == null ? "–" : Math.round(n(x) * (n(x) <= 1 ? 100 : 1)) + "%";
+  return [row("Possession","possessionPct",1,x => Math.round(n(x)) + "%"), row("Shots","totalShots"), row("On target","shotsOnTarget"), row("Corners","wonCorners"),
+    row("Saves","saves"), row("Pass accuracy","passPct",1,pct), row("Tackles won","effectiveTackles"), row("Interceptions","interceptions"),
+    row("Fouls","foulsCommitted",-1), row("Yellow cards","yellowCards",-1), row("Red cards","redCards",-1), row("Offsides","offsides",-1)].filter(Boolean);
+}
+function context(sum){
+  const S = SD.S, out = [];
+  const l5 = side => {
+    const t = (sum.lastFiveGames || []).find(x => x.team && String(x.team.id) === S.teams[side].id);
+    const evs = (t && t.events) || [];
+    return `<div><b>${esc(S.teams[side].abbr)}</b> ${evs.map(e => `<span class="dim">${esc(e.gameResult || "")}</span> ${esc(e.atVs || "")} ${esc((e.opponent && e.opponent.abbreviation) || "")} ${esc(e.score || "")}`).join(" · ") || '<span class="dim">no recent games</span>'}</div>`;
+  };
+  if ((sum.lastFiveGames || []).length) out.push({ title:"Last five", html:l5("away") + l5("home") });
+  // league table rows for both teams, if ESPN sends standings
+  try{
+    const groups = (sum.standings && sum.standings.groups) || [];
+    const rows = [];
+    for (const g of groups) for (const e of (g.standings && g.standings.entries) || []){
+      const id = String((e.team && (e.team.id || e.id)) || e.id || "");
+      const stat = k => { const s = (e.stats || []).find(x => x.name === k || x.abbreviation === k); return s ? s.displayValue : ""; };
+      if (id === S.teams.away.id || id === S.teams.home.id) rows.push({ me:true, rank:stat("rank") || e.rank || "", name:e.team && (e.team.displayName || e.team) || "", pts:stat("points"), gp:stat("gamesPlayed"), gd:stat("pointDifferential") });
+    }
+    if (rows.length) out.push({ title:`${LNAME} table`, html:`<table class="tbl">${rows.sort((a, b) => n(a.rank) - n(b.rank)).map(r => `<tr><td>${esc(r.rank)}</td><td>${esc(r.name)}</td><td>${esc(r.pts)} pts</td><td class="dim">${esc(r.gp)} GP · GD ${esc(r.gd)}</td></tr>`).join("")}</table>` });
+  }catch(e){}
+  const inj = ["away","home"].map(s => { const o = S.teams[s].players.filter(p => SD.SERIOUS.test(p.inj || "")); return `<div><b>${esc(S.teams[s].abbr)}</b> ${o.length ? o.map(p => `${esc(p.short)} <span class="dim">${esc(p.inj)}</span>`).join(", ") : '<span class="dim">no injuries listed</span>'}</div>`; }).join("");
+  out.push({ title:"Injuries", html:inj });
+  return out;
+}
+
+function detail(p, row, snap){
+  const say = [], s = p.season || {};
+  const ov = SD.once("ov:" + p.id, () => SD.overview(p.id));
+  if (row){
+    const mins = m => { const x = parseInt(m, 10); return isNaN(x) ? m : `${SD.ord(x)} minute`; };
+    row.goals.forEach(m => say.push(`Scored in the ${mins(m)}${/pen/.test(m) ? " from the spot" : /OG/.test(m) ? " (own goal)" : ""}.`));
+    if (row.assists.length) say.push(`Assist${row.assists.length > 1 ? "s" : ""} in the ${row.assists.map(mins).join(" and ")}.`);
+    const st = row.st;
+    if (!isGK(p) && (row.starter || row.subIn) && n(st.SHOT)) say.push(`${st.SHOT} shot${st.SHOT === "1" ? "" : "s"} today, ${st.SOG || 0} on target.`);
+    if (isGK(p) && (row.starter || row.subIn)) say.push(`${st.SV || 0} save${st.SV === "1" ? "" : "s"} today, ${st.GA || 0} conceded.`);
+    row.cards.forEach(c => say.push(`${c.red ? "Sent off" : "Booked"} in the ${mins(c.m)}.`));
+    if (row.onMin) say.push(`Came on in the ${mins(row.onMin)}.`);
+    if (row.offMin) say.push(`Subbed off in the ${mins(row.offMin)}.`);
+    if (!row.starter && !row.subIn) say.push(`On the bench today.`);
+  }
+  if (p.season){
+    if (isGK(p)) say.push(`${LNAME}: ${s.SV || 0} saves, ${s.GA || 0} conceded in ${s.APP || 0} appearances.`);
+    else say.push(`${LNAME}: ${s.G || 0} goal${s.G === "1" ? "" : "s"} and ${s.A || 0} assist${s.A === "1" ? "" : "s"} in ${s.APP || 0} appearances.`);
+  }
+  let comps = "";
+  if (ov && ov !== "pending" && ov._all){
+    const now = ov._all.filter(x => x._label.includes(SEASON_TAG) || x._label.startsWith(String(SEASON_START + (new Date().getMonth() < 6 ? 1 : 0))));
+    if (now.length){
+      const sumk = k => now.reduce((a, x) => a + n(x[k]), 0);
+      if (!isGK(p)) say.push(`All competitions this season: ${sumk("G")} goals, ${sumk("A")} assists, ${sumk("STRT")} starts.`);
+      comps = `<h4>This season by competition</h4><table><tr><th></th><th>STARTS</th>${isGK(p) ? "<th>SAVES</th><th>CONC</th><th>CS</th>" : "<th>G</th><th>A</th><th>SHOTS</th>"}</tr>` +
+        now.map(x => `<tr><td>${esc(x._label.replace(SEASON_TAG, "").replace(/^\d{4}\s*/, "").trim())}</td><td>${esc(x.STRT ?? "")}</td>${isGK(p) ? `<td>${esc(x.SV ?? "")}</td><td>${esc(x.GA ?? "")}</td><td>${esc(x.CS ?? "")}</td>` : `<td>${esc(x.G ?? "")}</td><td>${esc(x.A ?? "")}</td><td>${esc(x.SHOT ?? "")}</td>`}</tr>`).join("") + `</table>`;
+    }
+  } else if (ov === "pending") comps = `<h4>This season by competition</h4><p class="dim">Loading…</p>`;
+  if (p.nat) say.push(`${p.nat}${p.age ? `, ${p.age}` : ""}.`);
+  if (p.inj && SD.SERIOUS.test(p.inj)) say.push(`Listed ${p.inj}.`);
+  const tiles = row && (row.starter || row.subIn) ? (isGK(p) ? SD.tile(row.st.SV ?? 0, "Saves") + SD.tile(row.st.GA ?? 0, "Conceded") + SD.tile(row.st.SHF ?? "–", "Shots faced")
+    : SD.tile(row.goals.length, "Goals") + SD.tile(row.st.SHOT ?? 0, "Shots") + SD.tile(row.st.SOG ?? 0, "On target") + SD.tile(row.st.FC ?? 0, "Fouls") + SD.tile(row.st.FA ?? 0, "Fouled") + SD.tile(row.st.OF ?? 0, "Offsides")) : "";
+  return { say, html:(tiles ? `<h4>Today</h4><div class="tiles">${tiles}</div>` : "") + comps };
+}
+
+SD.start({
+  key:"soc-" + LEAGUE, sport:"soccer", league:LEAGUE, title:`${LNAME} board`, defaultTeam:"ARS", days:14,
+  codesHint:"ESPN codes: ARS, CHE, LIV, TOT, AVL, NEW; check a team's ESPN page if unsure",
+  serious:/out|question|doubt|suspend|injur/i,
+  vs: () => "at",
+  async loadPlayers(side, team, sum){
+    const r = await SD.J(`${SD.BASE}/teams/${team.id}/roster`).catch(() => ({ athletes:[] }));
+    const lr = (sum.rosters || []).find(x => String(x.team && x.team.id) === team.id);
+    if (lr && lr.formation) team.formation = lr.formation;
+    const out = (r.athletes || []).map(a => ({ id:String(a.id), name:a.displayName, short:a.shortName || a.displayName, jersey:a.jersey || "",
+      pos:(a.position && a.position.abbreviation) || "", nat:a.citizenship || "", age:a.age || "", ht:a.displayHeight || "",
+      inj: a.injuries && a.injuries[0] ? (a.injuries[0].status || a.injuries[0].type || "") : "", season: seasonFromRoster(a) }));
+    for (const e of (lr && lr.roster) || []){
+      if (!e.athlete || out.some(p => p.id === String(e.athlete.id))) continue;
+      const pa = e.position && e.position.abbreviation || "";
+      out.push({ id:String(e.athlete.id), name:e.athlete.displayName, short:e.athlete.shortName || e.athlete.displayName, jersey:e.jersey || "", pos: pa === "G" ? "G" : pa[0] === "F" ? "F" : /D|B/.test(pa[0]) ? "D" : "M", season:null });
+    }
+    return out;
+  },
+  bio: p => esc([p.nat, p.age ? p.age + " yrs" : "", p.ht].filter(Boolean).join(" · ")),
+  parseLive, tonight, badges, seasonLine, seasonMini, chipLine, groups, clock, pulse, feed, teamRows, context, detail
+});
+</script>
+</body>
+</html>

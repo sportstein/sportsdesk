@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SportsDesk MLB Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="boardkit.css">
+<style>
+.ls{border-collapse:collapse;font-weight:700;font-size:13px;margin-top:2px}
+.ls td,.ls th{padding:1px 5px;text-align:center;border-bottom:1px solid var(--line)}
+.ls th{color:var(--dim);font-weight:700;font-size:11px}
+.ls td:first-child{text-align:left;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:15px}
+.ls .tot{color:var(--pencil)}
+.dia{display:inline-grid;grid-template-columns:repeat(3,10px);grid-template-rows:repeat(2,10px);gap:1px;vertical-align:middle;margin:0 4px}
+.dia i{width:9px;height:9px;transform:rotate(45deg);border:1.5px solid var(--dim)}
+.dia i.on{background:var(--pencil);border-color:var(--pencil)}
+</style>
+</head>
+<body>
+<script src="boardkit.js"></script>
+<script>
+/* ==================================================================
+   MLB spotting board
+   https://sportstein.github.io/sportsdesk/mlb.html?team=BOS
+   Options: team, event, delay, poll, days (default 7), view=feed
+   ================================================================== */
+const { esc, num } = SD;
+const ipToOuts = ip => { const m = String(ip || "0").match(/^(\d+)(?:\.(\d))?/); return m ? +m[1] * 3 + (+m[2] || 0) : 0; };
+const f3 = x => x == null || !isFinite(x) ? "–" : x.toFixed(3).replace(/^0/, "");
+const f2 = x => x == null || !isFinite(x) ? "–" : x.toFixed(2);
+const isPitcher = p => /^(P|SP|RP|CP)$/.test(p.pos);
+const lineupRows = side => { const r = (SD.S.snap && (SD.S.snap.sum.rosters || []).find(x => String(x.team && x.team.id) === SD.S.teams[side].id)); return r ? r.roster || [] : []; };
+
+function rates(s){
+  if (!s) return null;
+  const n = k => parseFloat(String(s[k] ?? "").replace(/,/g, "")) || 0;
+  if (s.IP !== undefined){
+    const outs = ipToOuts(s.IP), ip = outs / 3;
+    return { pitcher:true, gp:n("GP"), gs:n("GS"), ip:s.IP, era: ip ? n("ER") * 9 / ip : null, whip: ip ? (n("H") + n("BB")) / ip : null, k:n("K"), bb:n("BB"), k9: ip ? n("K") * 9 / ip : null };
+  }
+  const ab = n("AB"), h = n("H"), bb = n("BB"), tb = h + n("2B") + 2 * n("3B") + 3 * n("HR");
+  return { gp:n("GP"), ab, h, hr:n("HR"), rbi:n("RBI"), r:n("R"), bb, so:n("SO"), avg: ab ? h / ab : null, obp: ab + bb ? (h + bb) / (ab + bb) : null, slg: ab ? tb / ab : null };
+}
+function post(p){ const s = p.season; if (!s || !s._all) return null; const x = s._all.find(a => /postseason/i.test(a._label)); return x ? rates(x) : null; }
+
+function parseLive(snap){
+  const out = {};
+  for (const tp of (snap.sum.boxscore && snap.sum.boxscore.players) || []){
+    for (const cat of tp.statistics || []){
+      const type = cat.type || cat.name, labels = (cat.labels || []).map(x => String(x).toUpperCase());
+      (cat.athletes || []).forEach((a, order) => {
+        if (!a.athlete) return;
+        const id = String(a.athlete.id), r = out[id] || (out[id] = {});
+        const o = r[type] = { order, batOrder:a.batOrder, starter:a.starter };
+        labels.forEach((l, i) => o[l] = (a.stats || [])[i]);
+      });
+    }
+  }
+  for (const side of ["away","home"]) for (const e of lineupRows(side)){
+    if (!e.athlete) continue;
+    const r = out[String(e.athlete.id)] || (out[String(e.athlete.id)] = {});
+    r.lineup = { batOrder:e.batOrder, starter:e.starter, subbedIn:e.subbedIn, subbedOut:e.subbedOut, pos:e.position && e.position.abbreviation };
+  }
+  return out;
+}
+function sitOf(snap){ return snap && snap.sum.situation; }
+const idOf = x => x && x.athlete ? String(x.athlete.id) : x && x.playerId ? String(x.playerId) : null;
+
+function tonight(p, row){
+  const S = SD.S;
+  if (S.state === "pre") return null;
+  if (row && row.pitching){
+    const x = row.pitching, pc = x.PC || String(x["PC-ST"] || "").split("-")[0];
+    return { items:[["IP", x.IP], ["H", x.H], ["R", x.R], ["ER", x.ER], ["BB", x.BB], ["K", x.K, +x.K >= 7 ? "up" : ""], ["PITCHES", pc, "w"]] };
+  }
+  if (row && row.batting){
+    const x = row.batting;
+    return { items:[["H-AB", x["H-AB"], "w"], ["R", x.R], ["RBI", x.RBI, +x.RBI ? "up" : ""], ["HR", x.HR, +x.HR ? "up" : ""], ["BB", x.BB], ["K", x.K]] };
+  }
+  if (row && row.lineup) return { none: S.state === "post" ? "Did not bat" : "Hasn't batted yet" };
+  return null;
+}
+function badges(p, row){
+  const S = SD.S, sit = sitOf(S.snap), b = [];
+  if (row && row.lineup && row.lineup.batOrder) b.push({ text:`Batting ${SD.ord(row.lineup.batOrder)}${row.lineup.subbedIn ? " (sub)" : ""}`, cls:"st5" });
+  if (S.state === "in" && sit){
+    if (idOf(sit.batter) === p.id) b.push({ text:"At bat", cls:"oncourt" });
+    if (idOf(sit.pitcher) === p.id) b.push({ text:"Pitching", cls:"oncourt" });
+  }
+  if (p.bt) b.push({ text:p.bt, cls:"st5" });
+  return b;
+}
+function seasonLine(p){
+  if (p.season === undefined) return `<span class="lab">SEASON</span>Loading…`;
+  const r = rates(p.season), ps = post(p);
+  if (!r) return `<span class="lab">SEASON</span>No MLB stats this season`;
+  const line = r.pitcher
+    ? `<span class="lab">SEASON · ${r.gp} G${r.gs ? `, ${r.gs} GS` : ""}</span><b>${f2(r.era)}</b> ERA · <b>${esc(r.ip)}</b> IP · <b>${r.k}</b> K · <b>${r.bb}</b> BB · <b>${f2(r.whip)}</b> WHIP`
+    : `<span class="lab">SEASON · ${r.gp} G</span><b>${f3(r.avg)}</b> AVG · <b>${r.hr}</b> HR · <b>${r.rbi}</b> RBI · <b>${r.r}</b> R · <b>${r.bb}</b> BB · <b>${r.so}</b> K`;
+  const pl = ps ? (ps.pitcher ? `<div class="ssn ly"><span class="lab">POSTSEASON</span><b>${f2(ps.era)}</b> ERA · <b>${esc(ps.ip)}</b> IP · <b>${ps.k}</b> K</div>` : `<div class="ssn ly"><span class="lab">POSTSEASON</span><b>${f3(ps.avg)}</b> · <b>${ps.hr}</b> HR · <b>${ps.rbi}</b> RBI <span class="gp">(${ps.gp} G)</span></div>`) : "";
+  return line + pl;
+}
+function seasonMini(p){
+  if (p.season === undefined) return "…";
+  const r = rates(p.season); if (!r) return "";
+  return r.pitcher ? `ERA <b>${f2(r.era)}</b> · <b>${esc(r.ip)}</b> IP` : `AVG <b>${f3(r.avg)}</b> · <b>${r.hr}</b> HR · <b>${r.rbi}</b> RBI`;
+}
+function chipLine(p, row){
+  if (row && row.pitching) return `${row.pitching.IP} IP, ${row.pitching.K} K`;
+  if (row && row.batting) return row.batting["H-AB"];
+  const r = rates(p.season); if (!r) return "";
+  return r.pitcher ? `${f2(r.era)} ERA` : f3(r.avg);
+}
+function groups(side){
+  const S = SD.S, team = S.teams[side], ps = team.players.filter(p => !p.il);
+  const live = S.live, lu = ps.filter(p => live[p.id] && live[p.id].lineup && live[p.id].lineup.batOrder).sort((a, b) =>
+    live[a.id].lineup.batOrder - live[b.id].lineup.batOrder || (live[a.id].lineup.starter ? 0 : 1) - (live[b.id].lineup.starter ? 0 : 1));
+  const pitched = ps.filter(p => live[p.id] && live[p.id].pitching).sort((a, b) => live[a.id].pitching.order - live[b.id].pitching.order);
+  const out = [];
+  if (lu.length){
+    out.push({ label:"Lineup", list:lu, cls:"floor" });
+    if (pitched.length) out.push({ label: S.state === "pre" ? "Starting pitcher" : "Pitchers today", list:pitched });
+    const prob = !pitched.length && S.prob[side] && S.players[S.prob[side]];
+    if (prob) out.push({ label:"Starting pitcher", list:[prob] });
+    const usedIds = new Set([...lu, ...pitched, prob].filter(Boolean));
+    out.push({ label:"Bullpen", list:ps.filter(p => isPitcher(p) && !usedIds.has(p)).sort(byIP), chips:true });
+    out.push({ label:"Bench", list:ps.filter(p => !isPitcher(p) && !usedIds.has(p)), chips:true });
+  } else {
+    const prob = S.prob[side] && S.players[S.prob[side]];
+    if (prob) out.push({ label:"Probable starter", list:[prob] });
+    out.push({ label:"Hitters (lineup posts before first pitch)", list:ps.filter(p => !isPitcher(p)).sort(byAB), mini:true });
+    out.push({ label:"Pitchers", list:ps.filter(p => isPitcher(p) && p !== prob).sort(byIP), chips:true });
+  }
+  const il = team.players.filter(p => p.il);
+  if (il.length) out.push({ label:`Injured list (${il.length})`, list:il, fold:true, chips:true });
+  return out;
+}
+const byAB = (a, b) => ((rates(b.season) || {}).ab || 0) - ((rates(a.season) || {}).ab || 0);
+const byIP = (a, b) => ipToOuts(b.season && b.season.IP) - ipToOuts(a.season && a.season.IP);
+
+function inningOf(snap){
+  const st = snap.sum.header.competitions[0].status || {}, ty = st.type || {};
+  return { n: st.period || 0, detail: ty.shortDetail || ty.detail || "", top: /^top|^mid/i.test(ty.shortDetail || "") };
+}
+function clock(snap){
+  const st = snap.sum.header.competitions[0].status || {}, ty = st.type || {}, sit = sitOf(snap);
+  if (ty.state === "post") return { top:"Final", bottom: st.period > 9 ? `${st.period} inn` : "" };
+  return { top: ty.shortDetail || "", bottom: sit && sit.outs != null && /^(top|bot)/i.test(ty.shortDetail || "") ? `${sit.outs} out${sit.outs === 1 ? "" : "s"}` : "" };
+}
+function possession(snap){ const i = inningOf(snap); if (SD.S.state !== "in") return null; return /^bot/i.test(i.detail) ? "home" : /^top/i.test(i.detail) ? "away" : null; }
+function nameOf(x){ return x && x.athlete ? (x.athlete.shortName || x.athlete.displayName) : ""; }
+function situation(snap){
+  const s = sitOf(snap); if (!s) return "";
+  const i = inningOf(snap); if (!/^(top|bot)/i.test(i.detail)) return s.lastPlay && s.lastPlay.text ? `<span class="dim">${esc(s.lastPlay.text)}</span>` : "";
+  const on = k => s[k] ? " on" : "";
+  const bits = [`<b>${s.balls ?? 0}-${s.strikes ?? 0}</b>`, `<span>${s.outs ?? 0} out${s.outs === 1 ? "" : "s"}</span>`,
+    `<span class="dia" title="Runners"><i></i><i class="${on("onSecond")}"></i><i></i><i class="${on("onThird")}"></i><i></i><i class="${on("onFirst")}"></i></span>`];
+  if (s.batter || s.pitcher) bits.push(`<span>${esc(nameOf(s.batter))} <span class="dim">vs</span> ${esc(nameOf(s.pitcher))}</span>`);
+  if (s.lastPlay && s.lastPlay.text) bits.push(`<span class="dim" style="flex-basis:100%">${esc(s.lastPlay.text)}</span>`);
+  return bits.join(" ");
+}
+function pulse(snap){
+  const comp = snap.sum.header.competitions[0], S = SD.S;
+  const cs = ["away","home"].map(sd => comp.competitors.find(c => c.homeAway === sd));
+  const n = Math.max(9, ...cs.map(c => (c.linescores || []).length));
+  const cell = (c, i) => { const l = (c.linescores || [])[i]; return l ? esc(l.displayValue ?? l.value ?? "") : ""; };
+  return `<table class="ls"><tr><th></th>${Array.from({ length:n }, (_, i) => `<th>${i + 1}</th>`).join("")}<th>R</th><th>H</th><th>E</th></tr>` +
+    cs.map(c => `<tr><td>${esc(c.team.abbreviation)}</td>${Array.from({ length:n }, (_, i) => `<td>${cell(c, i)}</td>`).join("")}<td class="tot">${esc(c.score ?? 0)}</td><td>${esc(c.hits ?? "")}</td><td>${esc(c.errors ?? "")}</td></tr>`).join("") + `</table>`;
+}
+function sideOfTeam(id){ const S = SD.S; return String(id) === S.teams.away.id ? "away" : String(id) === S.teams.home.id ? "home" : null; }
+function feed(snap){
+  const S = SD.S, items = [];
+  for (const p of snap.sum.plays || []){
+    const txt = String(p.text || ""), ty = String((p.type && p.type.text) || "");
+    const per = p.period || {}, stamp = `${/top/i.test(per.type || "") ? "Top" : "Bot"} ${per.number || ""}`;
+    const side = sideOfTeam(p.team && p.team.id);
+    const score = `${S.teams.away.abbr} ${p.awayScore}-${p.homeScore} ${S.teams.home.abbr}`;
+    if (p.scoringPlay && txt) items.push({ key:p.id, side, big:true, kicker:`${S.teams[side] ? S.teams[side].abbr : ""} +${p.scoreValue || ""} · ${score}`, head:txt, stamp });
+    else if (/homered|home run/i.test(txt)) items.push({ key:p.id, side, big:true, kicker:`Home run · ${score}`, head:txt, stamp });
+    else if (/pitching change|pitcher change|pitching for/i.test(ty + " " + txt)) items.push({ key:p.id, side: side === "away" ? "home" : side === "home" ? "away" : null, kicker:"Pitching change", head:txt, stamp });
+    else if (/stole|caught stealing|double play|triple play/i.test(txt) && /play result/i.test(ty)) items.push({ key:p.id, side, kicker:/double|triple/i.test(txt) ? "Double play" : "On the bases", head:txt, stamp });
+  }
+  return items;
+}
+function teamRows(snap){
+  const comp = snap.sum.header.competitions[0], T = {};
+  for (const t of (snap.sum.boxscore && snap.sum.boxscore.teams) || []){
+    const sd = sideOfTeam(t.team.id), o = T[sd] = {};
+    for (const g of t.statistics || []) for (const x of g.stats || []) if (!((g.name + x.abbreviation) in o)) o[g.name + x.abbreviation] = x.displayValue;
+  }
+  const c = sd => comp.competitors.find(x => x.homeAway === sd);
+  const rows = [["Hits", c("away").hits, c("home").hits, +c("away").hits, +c("home").hits, 1], ["Errors", c("away").errors, c("home").errors, +c("away").errors, +c("home").errors, -1]];
+  if (T.away && T.home){
+    const r = (k, key, dir) => { if (T.away[key] === undefined || T.home[key] === undefined) return; rows.push([k, T.away[key], T.home[key], parseFloat(T.away[key]), parseFloat(T.home[key]), dir]); };
+    r("Home runs", "battingHR", 1); r("Walks", "battingBB", 1); r("Strikeouts", "battingSO", -1); r("Left on base", "battingLOB", -1); r("Stolen bases", "battingSB", 1);
+    r("Pitcher K", "pitchingK", 1);
+  }
+  return rows;
+}
+function context(sum){
+  const S = SD.S, comp = sum.header.competitions[0], out = [];
+  if (comp.series && (comp.series.summary || comp.series.description)) out.push({ title:"Series", html:esc(comp.series.summary || comp.series.description) });
+  const probs = ["away","home"].map(sd => { const id = S.prob[sd], p = id && S.players[id]; return `<div><b>${esc(S.teams[sd].abbr)}</b> ${p ? esc(p.name) + ` <span class="dim">${p.season ? (rates(p.season) ? f2(rates(p.season).era) + " ERA" : "") : ""}</span>` : '<span class="dim">TBD</span>'}</div>`; }).join("");
+  out.push({ title:"Probable pitchers", html:probs });
+  const inj = ["away","home"].map(s => { const il = S.teams[s].players.filter(p => p.il); return `<div><b>${esc(S.teams[s].abbr)}</b> ${il.length ? il.map(p => esc(p.short)).join(", ") : '<span class="dim">nobody on the IL</span>'}</div>`; }).join("");
+  out.push({ title:"Injured list", html:inj });
+  return out;
+}
+
+function detail(p, row, snap){
+  const say = [], r = rates(p.season), ps = post(p);
+  const log = SD.once("log:" + p.id, () => SD.gamelog(p.id));
+  const g = log && log !== "pending" ? log.games : null;
+  let tiles = "";
+  if (row && row.batting){
+    const x = row.batting, hab = String(x["H-AB"] || "0-0").split("-"), extra = [];
+    if (+x.HR) extra.push(`${x.HR === "1" ? "a homer" : x.HR + " homers"}`);
+    if (+x.RBI) extra.push(`${x.RBI} RBI`); if (+x.BB) extra.push(`${x.BB} walk${x.BB === "1" ? "" : "s"}`); if (+x.R) extra.push(`${x.R} run${x.R === "1" ? "" : "s"} scored`);
+    say.push(`${hab[0]} for ${hab[1]}${extra.length ? " with " + extra.join(", ") : ""}.`);
+    if (+x.K >= 2) say.push(`${x.K} strikeouts tonight.`);
+  }
+  if (row && row.pitching){
+    const x = row.pitching, pc = x.PC || String(x["PC-ST"] || "").split("-")[0], stk = String(x["PC-ST"] || "").split("-")[1];
+    say.push(`${x.IP} innings, ${x.H} hit${x.H === "1" ? "" : "s"}, ${x.ER} earned, ${x.BB} walk${x.BB === "1" ? "" : "s"}, ${x.K} strikeout${x.K === "1" ? "" : "s"}${pc ? ` on ${pc} pitches` : ""}${stk ? ` (${stk} strikes)` : ""}.`);
+    tiles = SD.tile(x.IP, "Innings") + SD.tile(x.K, "Strikeouts") + SD.tile(pc, "Pitches");
+  }
+  if (r){
+    if (r.pitcher) say.push(`Season: ${f2(r.era)} ERA over ${r.ip} innings, ${r.k} strikeouts${r.k9 ? ` (${r.k9.toFixed(1)} per 9)` : ""}, ${f2(r.whip)} WHIP.`);
+    else say.push(`Season: hitting ${f3(r.avg)} with ${r.hr} homers and ${r.rbi} RBI in ${r.gp} games.`);
+  }
+  if (ps){
+    if (ps.pitcher) say.push(`This postseason: ${f2(ps.era)} ERA in ${ps.ip} innings, ${ps.k} strikeouts.`);
+    else say.push(`This postseason: ${f3(ps.avg)}, ${ps.hr} HR, ${ps.rbi} RBI in ${ps.gp} games.`);
+  }
+  if (g && g.length && !(r && r.pitcher)){
+    const l = g.slice(0, 7), h = l.reduce((a, x) => a + (+x.H || 0), 0), ab = l.reduce((a, x) => a + (+x.AB || 0), 0), hr = l.reduce((a, x) => a + (+x.HR || 0), 0);
+    if (ab) say.push(`Last ${l.length} games: ${h} for ${ab}${hr ? `, ${hr} HR` : ""}.`);
+    let streak = 0; for (const x of g){ if (+x.H > 0) streak++; else break; }
+    if (streak >= 5) say.push(`${streak}-game hitting streak coming in.`);
+  }
+  if (p.bt) say.push(`${p.bt.replace("B/T", "Bats/throws")}.`);
+  let logHtml = "";
+  if (log === "pending") logHtml = `<h4>Last games</h4><p class="dim">Loading his game log…</p>`;
+  else if (g && g.length){
+    const want = r && r.pitcher ? ["IP","H","ER","BB","K","ERA"] : ["AB","H","HR","RBI","BB","SO"];
+    const cols = want.filter(c => g[0][c] !== undefined);
+    logHtml = `<h4>Last ${Math.min(5, g.length)} games</h4><table><tr><th></th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${g.slice(0, 5).map(x => `<tr><td>${esc(x.date ? new Date(x.date).toLocaleDateString([], { month:"short", day:"numeric" }) : "")} ${esc(x.opp)} <span class="dim">${esc(x.res)}</span></td>${cols.map(c => `<td>${esc(x[c])}</td>`).join("")}</tr>`).join("")}</table>`;
+  }
+  return { say, html:(tiles ? `<h4>Tonight</h4><div class="tiles">${tiles}</div>` : "") + logHtml };
+}
+
+SD.start({
+  key:"mlb", sport:"baseball", league:"mlb", title:"MLB board", defaultTeam:"BOS", days:7,
+  codesHint:"ESPN uses NYY, NYM, CHW, CHC, LAD, LAA, SD, SF, TB, KC, WSH, ATH",
+  serious:/out|question|doubt|suspend|injured list|^il|day-to-day/i,
+  async loadPlayers(side, team, sum){
+    SD.S.prob = SD.S.prob || {};
+    const comp = sum.header.competitions[0], c = comp.competitors.find(x => x.homeAway === side);
+    const pr = c && c.probables && c.probables[0] && c.probables[0].athlete;
+    if (pr) SD.S.prob[side] = String(pr.id);
+    const r = await SD.J(`${SD.BASE}/teams/${team.id}/roster`);
+    const out = [];
+    for (const gr of r.athletes || []) for (const a of gr.items || []){
+      const inj = a.injuries && a.injuries[0] ? (a.injuries[0].status || "") : "";
+      const st = a.status && (a.status.name || a.status.type) || "";
+      out.push({ id:String(a.id), name:a.displayName, short:a.shortName || a.displayName, jersey:a.jersey || "", pos:(a.position && a.position.abbreviation) || "",
+        bt: a.bats && a.throws ? `B/T ${a.bats.abbreviation}/${a.throws.abbreviation}` : "", ht:a.displayHeight || "", wt:a.displayWeight || "", age:a.age || "",
+        college:(a.college && (a.college.shortName || a.college.name)) || "", inj, il: /injured|60-day|10-day|15-day/i.test(inj + " " + st), season:undefined });
+    }
+    // anyone in tonight's lineup who isn't on the roster feed
+    const lr = (sum.rosters || []).find(x => String(x.team && x.team.id) === team.id);
+    for (const e of (lr && lr.roster) || []){
+      if (!e.athlete || out.some(p => p.id === String(e.athlete.id))) continue;
+      out.push({ id:String(e.athlete.id), name:e.athlete.displayName, short:e.athlete.shortName || e.athlete.displayName, jersey:e.jersey || "", pos:(e.position && e.position.abbreviation) || "", season:undefined });
+    }
+    return out;
+  },
+  seasonOf: p => SD.overview(p.id, /regular/i),
+  bio: p => esc([p.ht, p.wt, p.age ? p.age + " yrs" : ""].filter(Boolean).join(" · ")) + (p.college ? ` · <b>${esc(p.college)}</b>` : ""),
+  parseLive, tonight, badges, seasonLine, seasonMini, chipLine, groups, clock, possession, situation, pulse, feed, teamRows, context, detail
+});
+</script>
+</body>
+</html>
