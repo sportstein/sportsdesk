@@ -81,7 +81,7 @@ function tonight(p, row){
   if (S.state === "pre" || !row) return null;
   if (!row.starter && !row.subIn) return { label:"MATCH", none: S.state === "post" ? "Unused sub" : "On the bench" };
   const st = row.st;
-  if (isGK(p)) return { label:"MATCH", items:[["SAVES", st.SV ?? 0], ["CONC", st.GA ?? 0, n(st.GA) ? "warn" : ""], ["SHOTS FACED", st.SHF ?? "–", "w"]] };
+  if (isGK(p)) return { label:"MATCH", items:[["SAVES", st.SV ?? 0], ["CONC", st.GA ?? 0, n(st.GA) ? "warn" : ""], ["ON TGT FACED", n(st.SV) + n(st.GA), "w"]] };
   return { label:"MATCH", items:[["G", row.goals.length || st.G || 0, row.goals.length ? "up" : ""], ["A", row.assists.length || st.A || 0, row.assists.length ? "up" : ""],
     ["SHOTS", st.SHOT ?? 0], ["ON TGT", st.SOG ?? 0, "w"], ["FOULS", st.FC ?? 0], ["FOULED", st.FA ?? 0, "w"], ["OFFS", st.OF ?? 0]] };
 }
@@ -297,7 +297,7 @@ function detail(p, row, snap){
   } else if (ov === "pending") comps = `<h4>This season by competition</h4><p class="dim">Loading…</p>`;
   if (p.nat) say.push(`${p.nat}${p.age ? `, ${p.age}` : ""}.`);
   if (p.inj && SD.SERIOUS.test(p.inj)) say.push(`Listed ${p.inj}.`);
-  const tiles = row && (row.starter || row.subIn) ? (isGK(p) ? SD.tile(row.st.SV ?? 0, "Saves") + SD.tile(row.st.GA ?? 0, "Conceded") + SD.tile(row.st.SHF ?? "–", "Shots faced")
+  const tiles = row && (row.starter || row.subIn) ? (isGK(p) ? SD.tile(row.st.SV ?? 0, "Saves") + SD.tile(row.st.GA ?? 0, "Conceded") + SD.tile(n(row.st.SV) + n(row.st.GA), "On target faced")
     : SD.tile(row.goals.length, "Goals") + SD.tile(row.st.SHOT ?? 0, "Shots") + SD.tile(row.st.SOG ?? 0, "On target") + SD.tile(row.st.FC ?? 0, "Fouls") + SD.tile(row.st.FA ?? 0, "Fouled") + SD.tile(row.st.OF ?? 0, "Offsides")) : "";
   const adv = playerAdvanced(p, row, snap, ov);
   const at = say.findIndex(x => x.startsWith(p.nat || "\u0000"));
