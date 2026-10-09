@@ -300,7 +300,7 @@ function playerAdvanced(p, row, snap, ov){
       if (b){
         todayT.unshift(SD.tile(x2(b.xg), "xG (est.)"));
         say.push(`${x2(b.xg)} xG from ${b.shots} shot${b.shots === 1 ? "" : "s"} today${b.best >= .3 ? `, best chance worth ${x2(b.best)}` : ""}.`);
-        if (b.goals && b.goals - b.xg >= .6) say.push(`Finishing well above expectation: ${b.goals} goal${b.goals === 1 ? "" : "s"} from ${x2(b.xg)} xG.`);
+        if (b.goals && b.goals - b.xg >= .75) say.push(`Finishing well above expectation: ${b.goals} goal${b.goals === 1 ? "" : "s"} from ${x2(b.xg)} xG.`);
         else if (!b.goals && b.xg >= .6) say.push(`Should have scored by the numbers: ${x2(b.xg)} xG and nothing to show for it.`);
         xgOf(snap).list.filter(x => x.pid === p.id && x.goal).forEach(x => say.push(`His ${x.min} goal was a ${x2(x.xg)} xG chance (${x.kind}).`));
       }
