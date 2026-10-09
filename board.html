@@ -608,7 +608,7 @@ function openPlayer(id){
   document.querySelectorAll(".pc.sel").forEach(c => c.classList.remove("sel"));
   document.querySelectorAll(`.pc[data-pid="${id}"]`).forEach(c => c.classList.add("sel"));
   renderDrawer();
-  const desk = $("#desk"); if (desk.scrollHeight > desk.clientHeight) desk.scrollTop = d.offsetTop - desk.offsetTop - 6;
+  const desk = $("#desk"); if (desk.scrollHeight > desk.clientHeight) desk.scrollTop += d.getBoundingClientRect().top - desk.getBoundingClientRect().top - 6;
   logOf(id).then(() => { if (DR.id === id) renderDrawer(); });
 }
 function closePlayer(){
