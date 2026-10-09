@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="boardkit.css">
+<link rel="stylesheet" href="boardkit.css?v=3">
 <style>
 .pc .yc,.chip .yc{font-weight:800;font-size:12px;background:#e8c11c;color:#111;padding:1px 6px}
 .pc .rc{font-weight:800;font-size:12px;background:var(--chair);color:#fff;padding:1px 6px}
@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-<script src="boardkit.js"></script>
+<script src="boardkit.js?v=3"></script>
 <script>
 /* ==================================================================
    Soccer spotting board: Premier League and Champions League
@@ -218,10 +218,11 @@ function detail(p, row, snap){
   }
   let comps = "";
   if (ov && ov !== "pending" && ov._all){
-    const now = ov._all.filter(x => x._label.includes(SEASON_TAG) || x._label.startsWith(String(SEASON_START + (new Date().getMonth() < 6 ? 1 : 0))));
+    // club competitions this season (internationals left out)
+    const now = ov._all.filter(x => (x._label.includes(SEASON_TAG) || (x._label.startsWith(String(SEASON_START)) && /shield|super ?cup|supercopa|supercoppa/i.test(x._label))) && !/nations league|friendly|world cup|euro|qualif|copa am|africa cup|gold cup/i.test(x._label));
     if (now.length){
       const sumk = k => now.reduce((a, x) => a + n(x[k]), 0);
-      if (!isGK(p)) say.push(`All competitions this season: ${sumk("G")} goals, ${sumk("A")} assists, ${sumk("STRT")} starts.`);
+      if (!isGK(p)) say.push(`All club competitions this season: ${sumk("G")} goals, ${sumk("A")} assists, ${sumk("STRT")} starts.`);
       comps = `<h4>This season by competition</h4><table><tr><th></th><th>STARTS</th>${isGK(p) ? "<th>SAVES</th><th>CONC</th><th>CS</th>" : "<th>G</th><th>A</th><th>SHOTS</th>"}</tr>` +
         now.map(x => `<tr><td>${esc(x._label.replace(SEASON_TAG, "").replace(/^\d{4}\s*/, "").trim())}</td><td>${esc(x.STRT ?? "")}</td>${isGK(p) ? `<td>${esc(x.SV ?? "")}</td><td>${esc(x.GA ?? "")}</td><td>${esc(x.CS ?? "")}</td>` : `<td>${esc(x.G ?? "")}</td><td>${esc(x.A ?? "")}</td><td>${esc(x.SHOT ?? "")}</td>`}</tr>`).join("") + `</table>`;
     }
@@ -238,6 +239,7 @@ SD.start({
   codesHint:"ESPN uses MAN for Man United, MNC for Man City, NFO for Forest, CRY for Palace",
   serious:/out|question|doubt|suspend|injur/i,
   vs: () => "at",
+  athleteBase:"https://site.web.api.espn.com/apis/common/v3/sports/soccer/all/athletes",
   async loadPlayers(side, team, sum){
     const r = await SD.J(`${SD.BASE}/teams/${team.id}/roster`).catch(() => ({ athletes:[] }));
     const lr = (sum.rosters || []).find(x => String(x.team && x.team.id) === team.id);

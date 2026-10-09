@@ -58,7 +58,7 @@ SD.start = function(M){
   };
   M.setup && M.setup(cfg);
   SD.BASE = `https://site.api.espn.com/apis/site/v2/sports/${M.sport}/${cfg.league}`;
-  SD.ATH = `https://site.web.api.espn.com/apis/common/v3/sports/${M.sport}/${cfg.league}/athletes`;
+  SD.ATH = M.athleteBase || `https://site.web.api.espn.com/apis/common/v3/sports/${M.sport}/${cfg.league}/athletes`;
   const S = SD.S = { ev:null, teams:{}, players:{}, live:{}, state:"pre", snap:null, openId:null, seenFeed:new Set(), M };
   const store = SD.store = {
     get(k){ try{ return localStorage.getItem(`sd${M.key}:` + k) || ""; }catch(e){ return ""; } },
