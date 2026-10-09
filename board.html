@@ -128,6 +128,35 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
   .ctx{grid-template-columns:1fr} .ctx .side{flex-direction:row} .ctx .side .box{flex:1}
   .wl i.W{background:#cfe9d8}.wl i.L{background:#f2cccc}
 }
+
+/* player drawer */
+.pc{cursor:pointer}
+.pc:hover{background:var(--slate2)}
+.pc.sel{outline:2px solid var(--pencil);outline-offset:-2px}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--ink);border-left:6px solid var(--tc,var(--desk));z-index:50;overflow-y:auto;padding:14px 18px 24px;transform:translateX(105%);transition:transform .18s ease;box-shadow:-20px 0 40px rgba(0,0,0,.5)}
+.drawer.on{transform:none}
+.drawer .dh{display:flex;align-items:center;gap:12px;position:sticky;top:-14px;background:var(--ink);padding:6px 0 8px;margin-top:-6px;z-index:1}
+.drawer .jn{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:46px;line-height:1;color:var(--tc)}
+.drawer .nm{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:30px;line-height:1}
+.drawer .x{margin-left:auto;background:var(--slate2);border:0;color:var(--chalk);font-size:26px;width:40px;height:40px;cursor:pointer}
+.drawer h4{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:18px;color:var(--dim);margin:16px 0 7px;letter-spacing:.02em}
+.drawer h5{font-weight:700;font-size:13px;color:var(--dim);margin:10px 0 4px}
+.drawer .dim{color:var(--dim);font-weight:600}
+.say{list-style:none}
+.say li{background:var(--slate);border-left:4px solid var(--pencil);padding:8px 11px;margin-bottom:6px;font-size:19px;font-weight:600;line-height:1.3}
+.say li b{color:var(--pencil);font-weight:800}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.tile{background:var(--slate);padding:7px 9px}
+.tile b{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:28px;line-height:1}
+.tile i{display:block;font-style:normal;font-size:12px;font-weight:700;color:var(--dim);margin-top:3px}
+.tile.up b{color:var(--up)} .tile.down b{color:var(--down)}
+.drawer .two{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
+.drawer table{width:100%;border-collapse:collapse;font-size:15px;font-weight:600}
+.drawer td,.drawer th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right}
+.drawer td:first-child,.drawer th:first-child{text-align:left}
+.drawer th{color:var(--dim);font-size:12px}
+.drawer .foot{font-size:12px;margin-top:16px}
+@media print{ .drawer{display:none} }
 </style>
 </head>
 <body>
@@ -343,7 +372,7 @@ function card(p){
         `<span class="st${up ? " up" : ""}${warn ? " warn" : ""}"><b>${f(l[k])}</b><i>${lab}</i></span>`).join("") + `</div>`;
     }
   }
-  return `<div class="pc${/out/i.test(p.inj) ? " out" : ""}" style="--tc:${t.color}">
+  return `<div class="pc${/out/i.test(p.inj) ? " out" : ""}${DR.id === p.id ? " sel" : ""}" data-pid="${esc(p.id)}" style="--tc:${t.color}">
     <div class="jn">${esc(p.jersey)}</div>
     <div>
       <div class="top"><span class="name">${esc(p.name)}</span><span class="pos">${esc(p.pos)}</span>${p.inj ? `<span class="inj${injCls}">${esc(p.inj)}</span>` : ""}${l && l.onCourt ? '<span class="oncourt">On floor</span>' : ""}</div>
@@ -418,7 +447,9 @@ function applyLive(sum){
     }
   }
   if (Object.keys(live).length) S.live = live;
+  S.sum = sum;
   if (S.state !== "pre") renderTeams();
+  if (DR.id) renderDrawer();
 }
 // ESPN's "active" flag = the five on the floor (checked: exactly 5 per team at the final buzzer). &oncourt=0 hides it
 const ON_COURT_OK = P.get("oncourt") !== "0";
@@ -446,6 +477,201 @@ async function tick(){
 }
 
 load().catch(e => { console.error(e); $("#msg").textContent = "Couldn't load the board: " + e.message; $("#msg").classList.add("on"); setStatus("", "Error"); });
+/* ---------- player drawer: advanced stats + on-air lines ---------- */
+const NQ = /mens-college/.test(cfg.league) && !/womens/.test(cfg.league) ? 2 : 4;
+const QLEN = cfg.league === "nba" ? 12 : NQ === 2 ? 20 : 10;
+const DR = { id:null, logs:{} };
+const ma = v => { const m = String(v || "").match(/(\d+)-(\d+)/); return m ? [+m[1], +m[2]] : [0, 0]; };
+const sg = n => n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : "even";
+const r1 = n => n == null || !isFinite(n) ? "–" : (Math.round(n * 10) / 10).toFixed(1);
+const r0 = n => n == null || !isFinite(n) ? "–" : String(Math.round(n));
+const perName = n => n <= NQ ? `${n}${["","st","nd","rd","th"][Math.min(n,4)]} ${NQ === 2 ? "half" : "quarter"}` : (n - NQ === 1 ? "OT" : `${n - NQ}OT`);
+function clockSec(s){ const m = String(s || "").match(/(\d+):(\d+)/); if (m) return +m[1] * 60 + +m[2]; const f = parseFloat(s); return isNaN(f) ? 0 : f; }
+function elapsedMin(sum){
+  const st = sum.header.competitions[0].status || {}, ty = st.type || {}, per = st.period || 0;
+  if (!per) return 0;
+  let e = 0; for (let p = 1; p < per; p++) e += p <= NQ ? QLEN : 5;
+  const cur = per <= NQ ? QLEN : 5;
+  if (ty.state === "post" || /END|HALFTIME/.test(ty.name || "")) return e + cur;
+  return e + cur - clockSec(st.displayClock) / 60;
+}
+function playerPlays(pid, name){
+  const shots = [], q = {}, ap = { n:0, pts:0 };
+  const astRe = new RegExp("\\(" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " assists\\)", "i");
+  for (const p of (S.sum && S.sum.plays) || []){
+    const per = (p.period && p.period.number) || 1, txt = String(p.text || "");
+    const who = String(p.participants && p.participants[0] && p.participants[0].athlete && p.participants[0].athlete.id || "");
+    if (p.shootingPlay && who === pid){
+      const ft = /free throw/i.test(txt), three = !ft && /three point|3-pt/i.test(txt), made = !!p.scoringPlay;
+      const dist = +((txt.match(/(\d+)-foot/) || [])[1] || 0);
+      const zone = ft ? "FT" : three ? "3PT"
+        : (/layup|dunk|tip|alley|putback|finger roll/i.test(txt) || (dist && dist <= 4)) ? "Rim"
+        : (dist >= 15 || (!dist && /jump|pullup|step back|fadeaway/i.test(txt))) ? "Mid" : "Short";
+      const pts = made ? (+p.scoreValue || (ft ? 1 : three ? 3 : 2)) : 0;
+      shots.push({ zone, made, assisted: made && /assists\)/i.test(txt), per });
+      if (made) q[per] = (q[per] || 0) + pts;
+    }
+    if (p.scoringPlay && astRe.test(txt)){ ap.n++; ap.pts += +p.scoreValue || 2; }
+  }
+  return { shots, q, ap };
+}
+async function logOf(id){
+  if (DR.logs[id] !== undefined) return DR.logs[id];
+  DR.logs[id] = "pending";
+  const parse = d => {
+    const labels = (d.labels || []).map(x => String(x).toUpperCase());
+    const reg = (d.seasonTypes || []).filter(t => /regular/i.test(t.displayName || ""));
+    const seen = new Map();
+    const walk = o => { if (!o || typeof o !== "object") return;
+      if (o.eventId && Array.isArray(o.stats) && !seen.has(String(o.eventId)) && String(o.eventId) !== String(S.ev)) seen.set(String(o.eventId), o.stats);
+      for (const k in o) if (typeof o[k] === "object") walk(o[k]); };
+    reg.forEach(walk);
+    if (!seen.size) return null;
+    const games = [...seen].map(([eid, st]) => {
+      const g = {}; labels.forEach((l, i) => g[l] = st[i]);
+      const m = (d.events || {})[eid] || {};
+      g.date = m.gameDate; g.opp = `${m.atVs || ""} ${(m.opponent && m.opponent.abbreviation) || ""}`.trim(); g.res = m.gameResult || "";
+      return g;
+    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+    return { games, label: (reg[0] && reg[0].displayName) || "Regular season" };
+  };
+  try{
+    let r = parse(await J(`${ATH}/${id}/gamelog`));
+    if (!r){ const now = new Date(); r = parse(await J(`${ATH}/${id}/gamelog?season=${now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1}`)); }
+    DR.logs[id] = r;
+  }catch(e){ DR.logs[id] = null; }
+  return DR.logs[id];
+}
+function seasonFromLog(log){
+  if (!log || !log.games.length) return null;
+  const g = log.games, n = g.length, tot = k => g.reduce((a, x) => a + (parseFloat(x[k]) || 0), 0);
+  let fga = 0, fta = 0, fgm = 0, tpm = 0;
+  g.forEach(x => { const f = ma(x.FG), t = ma(x["3PT"]), fr = ma(x.FT); fgm += f[0]; fga += f[1]; tpm += t[0]; fta += fr[1]; });
+  const hi = k => g.reduce((b, x) => (parseFloat(x[k]) || 0) > (b ? parseFloat(b[k]) || 0 : -1) ? x : b, null);
+  const l5 = g.slice(0, 5), l5avg = k => l5.reduce((a, x) => a + (parseFloat(x[k]) || 0), 0) / l5.length;
+  return { n, label: log.label, ts: fga + .44 * fta ? 100 * tot("PTS") / (2 * (fga + .44 * fta)) : null, efg: fga ? 100 * (fgm + .5 * tpm) / fga : null,
+    hiP: hi("PTS"), hiR: hi("REB"), hiA: hi("AST"), l5, l5P: l5avg("PTS"), l5R: l5avg("REB"), l5A: l5avg("AST"), ppg: tot("PTS") / n };
+}
+const hl = s => esc(s).replace(/([+−]?\d+(?:[.\-]\d+)?%?)/g, "<b>$1</b>");
+
+function openPlayer(id){
+  DR.id = id; $("#drawer").classList.add("on"); $("#drawer").scrollTop = 0; renderDrawer();
+  logOf(id).then(() => { if (DR.id === id) renderDrawer(); });
+}
+function closePlayer(){ DR.id = null; $("#drawer").classList.remove("on"); }
+function renderDrawer(){
+  const id = DR.id, p = id && S.players[id]; if (!p) return;
+  const t = S.teams[p.side], l = S.live[id], s = p.season || {}, log = DR.logs[id];
+  const sea = log && log !== "pending" ? seasonFromLog(log) : null;
+  const say = []; let tonight = "";
+  const played = l && l.MIN != null && l.MIN !== "" && l.MIN !== "0" && l.MIN !== "--" && S.sum;
+  if (played){
+    const [fgm, fga] = ma(l.FG), [tpm, tpa] = ma(l["3PT"]), [ftm, fta] = ma(l.FT);
+    const pts = +l.PTS || 0, reb = +l.REB || 0, ast = +l.AST || 0, stl = +l.STL || 0, blk = +l.BLK || 0, to = +l.TO || 0, pf = +l.PF || 0, min = +l.MIN || 0;
+    const pm = parseInt(String(l["+/-"] || "").replace("−", "-"), 10);
+    const tsa = fga + .44 * fta, ts = tsa ? 100 * pts / (2 * tsa) : null, efg = fga ? 100 * (fgm + .5 * tpm) / fga : null;
+    const comp = S.sum.header.competitions[0], my = comp.competitors.find(c => c.homeAway === p.side), op = comp.competitors.find(c => c.homeAway !== p.side);
+    const teamPts = +my.score || 0, margin = teamPts - (+op.score || 0);
+    const offMin = Math.max(0, elapsedMin(S.sum) - min), off = isFinite(pm) ? margin - pm : null;
+    const per = (comp.status && comp.status.period) || 0, post = S.state === "post";
+    const { shots, q, ap } = playerPlays(id, p.name);
+    const z = {}; shots.forEach(x => { const o = z[x.zone] || (z[x.zone] = { m:0, a:0 }); o.a++; if (x.made) o.m++; });
+    const fgMade = shots.filter(x => x.made && x.zone !== "FT"), unast = fgMade.filter(x => !x.assisted).length;
+
+    // on-air lines, most useful first
+    say.push(`${pts} points on ${fgm}-of-${fga} shooting${tpa ? `, ${tpm}-of-${tpa} from three` : ""}${fta ? `, ${ftm}-of-${fta} at the line` : ""}.`);
+    const cats = [["points", pts], ["rebounds", reb], ["assists", ast], ["steals", stl], ["blocks", blk]];
+    const tens = cats.filter(c => c[1] >= 10);
+    if (tens.length >= 3) say.push(`Triple-double: ${tens.map(c => `${c[1]} ${c[0]}`).join(", ")}.`);
+    else if (tens.length === 2) say.push(`Double-double: ${tens.map(c => `${c[1]} ${c[0]}`).join(" and ")}.`);
+    else if (tens.length === 1 && !post){ const near = cats.find(c => c[1] >= 8 && c[1] < 10); if (near) say.push(`${10 - near[1]} ${near[0].replace(/s$/, "")}${10 - near[1] > 1 ? "s" : ""} from a double-double.`); }
+    if (fga + fta >= 5 && ts != null){
+      if (ts >= 62) say.push(`Efficient: ${r0(ts)}% true shooting (league average is about 58%).`);
+      else if (ts < 45) say.push(`Tough shooting night: ${r0(ts)}% true shooting.`);
+    }
+    if (isFinite(pm) && min >= 3) say.push(`${t.short} are ${sg(pm)} in his ${min} minutes${offMin >= 3 && off != null ? `, ${sg(off)} in the ${Math.round(offMin)} without him` : ""}.`);
+    const qs = Object.entries(q).sort((a, b) => b[1] - a[1]);
+    if (qs.length && qs[0][1] >= 8) say.push(`${qs[0][1]} points in the ${perName(+qs[0][0])}.`);
+    if (z.Rim && z.Rim.a >= 3) say.push(`${z.Rim.m}-of-${z.Rim.a} at the rim.`);
+    if (fgMade.length >= 3) say.push(unast >= fgMade.length / 2 ? `${unast} of his ${fgMade.length} field goals unassisted.` : `${fgMade.length - unast} of his ${fgMade.length} field goals assisted.`);
+    if (ap.n >= 3) say.push(`His ${ap.n} assists have created ${ap.pts} points.`);
+    if (pts >= 10 && teamPts) say.push(`${pts} of ${t.abbr}'s ${teamPts} points (${Math.round(100 * pts / teamPts)}%).`);
+    const avg = num(s.PTS);
+    if (avg && pts >= avg && pts >= 8) say.push(`${post ? "Topped" : "Already past"} his season average of ${avg} points.`);
+    const ravg = num(s.REB); if (ravg && reb >= ravg && reb >= 6) say.push(`${reb} rebounds, season average ${ravg}.`);
+    if (sea && sea.hiP){ const hi = parseFloat(sea.hiP.PTS) || 0;
+      if (pts > hi && pts >= 10) say.push(`Season high: previous best was ${hi}${sea.hiP.opp ? ` ${sea.hiP.opp}` : ""}.`);
+      else if (pts >= 10 && hi - pts <= 6) say.push(`${hi - pts} away from his season high of ${hi}.`); }
+    if (pf >= 4 || (pf >= 3 && per <= Math.ceil(NQ / 2))) say.push(`Foul trouble: ${pf} fouls${per ? ` in the ${perName(per)}` : ""}.`);
+    if (to >= 4) say.push(`${to} turnovers.`);
+
+    const tile = (v, k, cls = "") => `<div class="tile${cls}"><b>${v}</b><i>${k}</i></div>`;
+    const zrow = (k, lab) => { const o = k === "FT" ? { m:ftm, a:fta } : z[k]; if (!o || !o.a) return ""; return `<tr><td>${lab}</td><td>${o.m}-${o.a}</td><td>${r0(100 * o.m / o.a)}%</td></tr>`; };
+    const nper = Math.max(per, NQ);
+    tonight = `<h4>Tonight, advanced</h4>
+      <div class="tiles">
+        ${tile(ts == null ? "–" : r0(ts) + "%", "True shooting", ts >= 62 ? " up" : ts != null && ts < 45 ? " down" : "")}
+        ${tile(efg == null ? "–" : r0(efg) + "%", "Effective FG")}
+        ${tile(isFinite(pm) ? sg(pm) : "–", "+/- on floor", pm > 0 ? " up" : pm < 0 ? " down" : "")}
+        ${tile(off == null ? "–" : sg(off), `Team without him${offMin ? ` (${Math.round(offMin)} min)` : ""}`)}
+        ${tile(to ? r1(ast / to) : ast ? ast + ":0" : "–", "Assist to turnover")}
+        ${tile(ap.pts || 0, "Points from his assists")}
+        ${tile(fga ? r1(pts / fga) : "–", "Points per shot")}
+        ${tile(`${+l.OREB || 0}/${+l.DREB || 0}`, "Off/def rebounds")}
+        ${tile(fgMade.length ? `${unast}/${fgMade.length}` : "–", "Unassisted FGs")}
+      </div>
+      <div class="two">
+        <div><h5>Shot zones</h5><table>${zrow("Rim", "At the rim")}${zrow("Short", "Short (5–14 ft)")}${zrow("Mid", "Midrange")}${zrow("3PT", "Three")}${zrow("FT", "Free throws")}</table>${shots.length ? "" : '<p class="dim">No shots logged yet.</p>'}</div>
+        <div><h5>Points by ${NQ === 2 ? "half" : "quarter"}</h5><table>${Array.from({ length:nper }, (_, i) => i + 1).filter(n => n <= per || n <= NQ).map(n => `<tr><td>${esc(perName(n).replace(/ (quarter|half)/, ""))}</td><td>${q[n] || 0}</td></tr>`).join("")}</table></div>
+      </div>`;
+  } else if (l){
+    tonight = `<h4>Tonight</h4><p class="dim">${l.inactive ? "Inactive." : S.state === "post" ? "Did not play." : "Hasn't checked in yet."}</p>`;
+  }
+
+  // season context (also the pregame lines)
+  let season = "";
+  if (sea){
+    if (!played){
+      say.push(`Averaging ${s.PTS ?? r1(sea.ppg)} points${s.REB ? `, ${s.REB} rebounds` : ""}${s.AST ? ` and ${s.AST} assists` : ""}.`);
+      say.push(`Last ${sea.l5.length}: ${r1(sea.l5P)} points, ${r1(sea.l5R)} rebounds, ${r1(sea.l5A)} assists.`);
+      if (sea.hiP) say.push(`Season high ${sea.hiP.PTS} points${sea.hiP.opp ? ` ${sea.hiP.opp}` : ""}.`);
+      if (sea.ts != null) say.push(`${r0(sea.ts)}% true shooting on the season.`);
+    }
+    season = `<h4>${esc(sea.label)} (${sea.n} games)</h4>
+      <div class="tiles">
+        <div class="tile"><b>${sea.ts == null ? "–" : r0(sea.ts) + "%"}</b><i>True shooting</i></div>
+        <div class="tile"><b>${sea.efg == null ? "–" : r0(sea.efg) + "%"}</b><i>Effective FG</i></div>
+        <div class="tile"><b>${r1(sea.l5P)}</b><i>PPG, last ${sea.l5.length}</i></div>
+        <div class="tile"><b>${esc(sea.hiP ? sea.hiP.PTS : "–")}</b><i>High pts${sea.hiP && sea.hiP.opp ? " " + esc(sea.hiP.opp) : ""}</i></div>
+        <div class="tile"><b>${esc(sea.hiR ? sea.hiR.REB : "–")}</b><i>High reb${sea.hiR && sea.hiR.opp ? " " + esc(sea.hiR.opp) : ""}</i></div>
+        <div class="tile"><b>${esc(sea.hiA ? sea.hiA.AST : "–")}</b><i>High ast${sea.hiA && sea.hiA.opp ? " " + esc(sea.hiA.opp) : ""}</i></div>
+      </div>
+      <h5>Last ${sea.l5.length}</h5>
+      <table class="log"><tr><th></th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG</th><th>3PT</th></tr>
+        ${sea.l5.map(g => `<tr><td>${esc(g.date ? new Date(g.date).toLocaleDateString([], { month:"short", day:"numeric" }) : "")} ${esc(g.opp)} <span class="dim">${esc(g.res)}</span></td><td>${esc(g.MIN)}</td><td>${esc(g.PTS)}</td><td>${esc(g.REB)}</td><td>${esc(g.AST)}</td><td>${esc(g.FG)}</td><td>${esc(g["3PT"])}</td></tr>`).join("")}</table>`;
+  } else if (log === "pending"){
+    season = `<h4>Season</h4><p class="dim">Loading his game log…</p>`;
+  } else {
+    season = `<h4>Season</h4><p class="dim">No game log on ESPN yet.</p>`;
+    if (!played && p.season) say.push(`Averaging ${s.PTS} points, ${s.REB} rebounds and ${s.AST} assists.`);
+  }
+
+  $("#drawer").style.setProperty("--tc", t.color);
+  $("#drawer").innerHTML = `
+    <div class="dh"><span class="jn">${esc(p.jersey)}</span><div><div class="nm">${esc(p.name)}</div><div class="dim">${esc(t.name)} · ${esc(p.pos)}${p.college ? " · " + esc(p.college) : ""}</div></div><button class="x" type="button" aria-label="Close">×</button></div>
+    <h4>On-air lines</h4>
+    ${say.length ? `<ul class="say">${say.map(x => `<li>${hl(x)}</li>`).join("")}</ul>` : '<p class="dim">Nothing yet.</p>'}
+    ${tonight}${season}
+    <p class="dim foot">From ESPN's box score and play-by-play${cfg.delay ? `, on your ${cfg.delay}s delay` : ""}. Updates live while open. Esc to close.</p>`;
+  $("#drawer .x").addEventListener("click", closePlayer);
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && DR.id) closePlayer(); });
+document.addEventListener("click", e => {
+  const c = e.target.closest && e.target.closest(".pc");
+  if (!c || e.target.closest("textarea")) return;
+  if (c.dataset.pid === DR.id) closePlayer(); else openPlayer(c.dataset.pid);
+});
 </script>
+<aside class="drawer" id="drawer" aria-label="Player detail"></aside>
 </body>
 </html>
