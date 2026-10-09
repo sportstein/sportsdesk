@@ -235,7 +235,7 @@ function detail(p, row, snap){
 
 SD.start({
   key:"soc-" + LEAGUE, sport:"soccer", league:LEAGUE, title:`${LNAME} board`, defaultTeam:"ARS", days:14,
-  codesHint:"ESPN codes: ARS, CHE, LIV, TOT, AVL, NEW; check a team's ESPN page if unsure",
+  codesHint:"ESPN uses MAN for Man United, MNC for Man City, NFO for Forest, CRY for Palace",
   serious:/out|question|doubt|suspend|injur/i,
   vs: () => "at",
   async loadPlayers(side, team, sum){

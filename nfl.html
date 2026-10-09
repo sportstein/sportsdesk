@@ -44,6 +44,7 @@ const nz = x => x != null && x !== "" && x !== "0" && x !== "0/0" && x !== "0-0"
 function tonight(p, row){
   const S = SD.S;
   if (S.state === "pre") return null;
+  if (!row && /out|injured reserve|suspend/i.test(p.inj || "")) return null;
   if (!row){
     if (OL.test(p.pos) || /^(LS)$/.test(p.pos)) return null;
     return { none: S.state === "post" ? "No stats" : "No stats yet" };
@@ -78,7 +79,7 @@ function chipLine(p, row){
 function seasonLine(p){
   const s = p.season;
   if (p.season === undefined) return `<span class="lab">SEASON</span>Loading…`;
-  if (!s) return `<span class="lab">SEASON</span>No stats this season`;
+  if (!s || Object.keys(s).filter(k => !k.startsWith("_")).every(k => s[k] === "-")) return `<span class="lab">SEASON</span>No stats this season`;
   const lab = `<span class="lab">SEASON${s.GP ? " · " + esc(s.GP) + " GP" : ""}</span>`;
   if (p.pos === "QB") return lab + `<b>${comma(s.YDS)}</b> yds · <b>${esc(s.TD ?? "–")}</b> TD · <b>${esc(s.INT ?? "–")}</b> INT · <b>${esc(s["CMP%"] ?? "–")}</b> cmp% · <b>${esc(s.RTG ?? "–")}</b> rtg`;
   if (s.REC !== undefined) return lab + `<b>${esc(s.REC)}</b> rec · <b>${comma(s.YDS)}</b> yds · <b>${esc(s.TD ?? "–")}</b> TD${s.CAR && s.CAR !== "-" && +s.CAR > 5 ? ` · <b>${esc(s.CAR)}</b> car <b>${comma(s.YDS_2)}</b> rush yds` : ""}`;
@@ -90,7 +91,7 @@ function seasonLine(p){
 function seasonMini(p){
   const s = p.season;
   if (p.season === undefined) return "…";
-  if (!s) return "";
+  if (!s || s.YDS === "-" || s.YDS == null && s.TOT == null) return "";
   if (p.pos === "QB") return `SEASON <b>${comma(s.YDS)} yds · ${esc(s.TD)} TD</b>`;
   if (s.REC !== undefined) return `SEASON <b>${esc(s.REC)} rec · ${comma(s.YDS)} yds</b>`;
   if (s.CAR !== undefined) return `SEASON <b>${comma(s.YDS)} yds · ${esc(s.TD)} TD</b>`;
@@ -176,7 +177,7 @@ function feed(snap){
         items.push({ key:p.id, side, kicker:"4th down try", head:txt, stamp });
       }
     }
-    if (d.result && d !== drv.current && !d.isScore && !/^(TD|FG)$/i.test(d.result)){
+    if (d.result && d !== drv.current && !d.isScore && !/^(TD|FG)$/i.test(d.result) && !/end of (half|game|regulation)/i.test(d.displayResult || d.result)){
       const side = sideOfTeam(d.team && d.team.id);
       items.push({ key:"d" + d.id, side, kicker:`${S.teams[side] ? S.teams[side].abbr : ""} drive · ${d.displayResult || d.result}`, head:d.description || "", stamp:"" });
     }
