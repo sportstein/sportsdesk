@@ -132,7 +132,10 @@ body.feedonly .m-team b{font-size:24px}
 body.feedonly .m-team strong{font-size:38px}
 body.feedonly .m-clock{font-size:15px;padding:4px 12px;min-width:80px}
 body.feedonly .m-clock span{font-size:22px}
-body.feedonly .f-item:first-child .f-head{font-size:26px}
+body.feedonly .f-item:not(.bk) .f-head{font-size:21px}
+body.feedonly .f-item.big .f-head{font-size:24px}
+body.feedonly .f-item:first-child:not(.bk) .f-head{font-size:26px}
+body.feedonly .f-item.bk:first-child .f-head{font-size:17px;font-weight:700;color:var(--chalk)}
 
 .m-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-weight:600;font-size:15px;color:var(--dim)}
 .m-brand{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:20px;color:var(--chalk);
@@ -885,7 +888,22 @@ function runEngine(m, silent){
   for (let i = from; i < B.length; i++){
     const b = B[i]; lastBy[b.side] = b;
     const sc = Number.isFinite(b.a) && Number.isFinite(b.h) ? `, ${m.away.abbr} ${b.a}-${b.h} ${m.home.abbr}` : "";
-    if (MONITOR) feedOnly({ bk:true, color:team(b.side).color, kicker:`${team(b.side).abbr} +${b.pts}${sc}`, head:b.text,
+    if (!MONITOR) continue;
+    // a trip to the line is one line in the feed: "Luka Garza 2-2 FT"
+    const ftm = b.ft && String(b.text).match(/^(.*?) makes .*?free throw.*?(\d+) of (\d+)/i);
+    if (ftm){
+      const key = `${b.pid}|${b.period}|${b.clock}`;
+      const prev = feed.slice(0, 4).find(x => x.ftKey === key);
+      if (prev){
+        prev.made++; prev.pts += b.pts;
+        prev.head = `${ftm[1]} ${prev.made}-${ftm[3]} FT`; prev.kicker = `${team(b.side).abbr} +${prev.pts}${sc}`;
+        renderFeed(); continue;
+      }
+      feedOnly({ bk:true, ftKey:key, made:1, pts:b.pts, color:team(b.side).color, kicker:`${team(b.side).abbr} +${b.pts}${sc}`,
+        head:`${ftm[1]} 1-${ftm[3]} FT`, stamp:`${periodName(b.period)} ${b.clock}` });
+      continue;
+    }
+    feedOnly({ bk:true, color:team(b.side).color, kicker:`${team(b.side).abbr} +${b.pts}${sc}`, head:b.text,
       stamp:`${periodName(b.period)} ${b.clock}` });
   }
   E.bIdx = B.length;

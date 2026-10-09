@@ -177,6 +177,27 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .tn.sm .st i{font-size:9px;margin-top:1px}
 .tn.sm .none{padding:3px 8px;font-size:13px}
 .pc.mini .pnote{font-size:13px;margin-top:3px}
+
+/* pulse strip under the score: run, droughts, team fouls, timeouts */
+.pulse{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;padding:7px 2px 1px;font-weight:700;font-size:14px;color:var(--chalk)}
+.pulse[hidden]{display:none}
+.pulse b{display:inline-flex;align-items:center;gap:6px;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:18px;color:var(--pencil)}
+.pulse b i{width:5px;height:16px;background:var(--tc)}
+.pulse .dry{color:var(--down)}
+.pulse .grpx{color:var(--dim);font-weight:700;font-size:12px;letter-spacing:.03em;margin-right:-6px}
+.pulse .pen{color:var(--pencil)}
+/* team stats */
+.teambox[hidden]{display:none}
+.tb{width:100%;border-collapse:collapse;font-weight:700;font-size:14px}
+.tb td,.tb th{padding:3px 4px;border-bottom:1px solid var(--line)}
+.tb th{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:17px;text-align:left}
+.tb th:last-child,.tb td:last-child{text-align:right}
+.tb th i{display:inline-block;width:5px;height:14px;background:var(--tc);margin-right:5px;vertical-align:-1px}
+.tb th:last-child i{margin:0 0 0 5px;float:right;margin-top:3px}
+.tb td.k{text-align:center;color:var(--dim);font-size:12px;font-weight:700;white-space:nowrap}
+.tb td.win{color:var(--up)}
+.tbf{color:var(--dim);font-weight:600;font-size:12px;margin-top:5px}
+@media print{ .pulse,.teambox{display:none} }
 </style>
 </head>
 <body>
@@ -362,8 +383,9 @@ function renderShell(sum, comp){
     <div class="layout">
       <div class="col away" id="colA"></div>
       <aside class="desk" id="desk">
-        <div class="box alerts"><h3>Live alerts</h3><iframe id="feed" title="Live alerts" src="${esc(feedUrl())}"></iframe></div>
+        <div class="box alerts"><h3>Live alerts</h3><iframe id="feed" title="Live alerts" src="${esc(feedUrl())}"></iframe><div class="pulse" id="pulse" hidden></div></div>
         <section class="detail" id="detail" hidden aria-label="Player detail"></section>
+        <div class="box teambox" id="teamBox" hidden></div>
         ${hasL5 ? `<div class="box"><h3>Last five</h3><div class="l5">${l5("away")}${l5("home")}</div></div>` : ""}
         <div class="box"><h3>Season series</h3><div class="list">${seriesTxt}</div></div>
         <div class="box"><h3>Injury report</h3><div class="list">${injuries}</div></div>
@@ -487,6 +509,7 @@ function applyLive(sum){
   if (Object.keys(live).length) S.live = live;
   S.sum = sum;
   if (S.state !== "pre") renderTeams();
+  try{ renderPulse(sum); renderTeamBox(sum); }catch(e){ console.error(e); }
   if (DR.id) renderDrawer();
 }
 // ESPN's "active" flag = the five on the floor (checked: exactly 5 per team at the final buzzer). &oncourt=0 hides it
@@ -721,6 +744,100 @@ function renderDrawer(){
     ${say.length ? `<ul class="say">${say.map(x => `<li>${hl(x)}</li>`).join("")}</ul>` : '<p class="dim">Nothing yet.</p>'}
     ${tonight}${season}
     <p class="dim foot">From ESPN's box score and play-by-play${cfg.delay ? `, on your ${cfg.delay}s delay` : ""}. Updates live. Esc or click the card again to close.</p>`;
+}
+
+/* ---------- team box + the pulse strip (run, drought, fouls, timeouts) ---------- */
+function teamStats(sum){
+  const out = {};
+  for (const t of (sum.boxscore && sum.boxscore.teams) || []){
+    const side = String(t.team.id) === S.teams.away.id ? "away" : "home", v = {};
+    (t.statistics || []).forEach(x => v[x.name] = x.displayValue);
+    out[side] = v;
+  }
+  return out.away && out.home ? out : null;
+}
+function renderTeamBox(sum){
+  const el = $("#teamBox"); if (!el) return;
+  const T = teamStats(sum);
+  if (!T || S.state === "pre"){ el.hidden = true; return; }
+  el.hidden = false;
+  const A = S.teams.away, H = S.teams.home;
+  const n = v => parseFloat(v) || 0;
+  // [label, away value, home value, which number decides "better", higher is better?]
+  const rows = [
+    ["FG", `${T.away["fieldGoalsMade-fieldGoalsAttempted"]} · ${T.away.fieldGoalPct}%`, `${T.home["fieldGoalsMade-fieldGoalsAttempted"]} · ${T.home.fieldGoalPct}%`, n(T.away.fieldGoalPct), n(T.home.fieldGoalPct), 1],
+    ["3PT", `${T.away["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]} · ${T.away.threePointFieldGoalPct}%`, `${T.home["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]} · ${T.home.threePointFieldGoalPct}%`, n(T.away.threePointFieldGoalPct), n(T.home.threePointFieldGoalPct), 1],
+    ["FT", T.away["freeThrowsMade-freeThrowsAttempted"], T.home["freeThrowsMade-freeThrowsAttempted"], n(T.away.freeThrowPct), n(T.home.freeThrowPct), 1],
+    ["Paint", T.away.pointsInPaint, T.home.pointsInPaint, n(T.away.pointsInPaint), n(T.home.pointsInPaint), 1],
+    ["Fast break", T.away.fastBreakPoints, T.home.fastBreakPoints, n(T.away.fastBreakPoints), n(T.home.fastBreakPoints), 1],
+    // ESPN lists points *conceded* off turnovers, so each team's figure is the other side's number
+    ["Pts off TO", T.home.turnoverPoints, T.away.turnoverPoints, n(T.home.turnoverPoints), n(T.away.turnoverPoints), 1],
+    ["Rebounds", `${T.away.totalRebounds} (${T.away.offensiveRebounds} off)`, `${T.home.totalRebounds} (${T.home.offensiveRebounds} off)`, n(T.away.totalRebounds), n(T.home.totalRebounds), 1],
+    ["Assists", T.away.assists, T.home.assists, n(T.away.assists), n(T.home.assists), 1],
+    ["Turnovers", T.away.totalTurnovers || T.away.turnovers, T.home.totalTurnovers || T.home.turnovers, n(T.away.totalTurnovers || T.away.turnovers), n(T.home.totalTurnovers || T.home.turnovers), -1],
+    ["Largest lead", T.away.largestLead, T.home.largestLead, n(T.away.largestLead), n(T.home.largestLead), 1]
+  ];
+  const cell = (v, me, them, dir) => `<td class="${me * dir > them * dir ? "win" : ""}">${esc(v ?? "–")}</td>`;
+  el.innerHTML = `<h3>Team stats</h3><table class="tb">
+    <tr><th style="--tc:${A.color}"><i></i>${esc(A.abbr)}</th><th></th><th style="--tc:${H.color}"><i></i>${esc(H.abbr)}</th></tr>
+    ${rows.map(([k, a, h, na, nh, dir]) => `<tr>${cell(a, na, nh, dir)}<td class="k">${k}</td>${cell(h, nh, na, dir)}</tr>`).join("")}
+  </table>${T.away.leadChanges ? `<p class="tbf">${esc(T.away.leadChanges)} lead changes · ${esc(A.abbr)} led ${esc(T.away.leadPercentage)}% of the game, ${esc(H.abbr)} ${esc(T.home.leadPercentage)}%</p>` : ""}`;
+}
+
+function gameSec(per, clock){
+  let e = 0; for (let p = 1; p < per; p++) e += (p <= NQ ? QLEN : 5) * 60;
+  return e + (per <= NQ ? QLEN : 5) * 60 - clock;
+}
+function renderPulse(sum){
+  const el = $("#pulse"); if (!el) return;
+  if (S.state === "pre"){ el.hidden = true; return; }
+  const plays = sum.plays || [], A = S.teams.away, H = S.teams.home;
+  const sideOf = id => String(id) === A.id ? "away" : String(id) === H.id ? "home" : null;
+  const st = sum.header.competitions[0].status || {}, per = st.period || 1, nowSec = S.state === "post" ? Infinity : gameSec(per, clockSec(st.displayClock));
+  // current run, same rule as the alerts: the running team can give up 4 before it's broken
+  let run = null, lastFG = { away:null, home:null };
+  for (const p of plays){
+    const sd = sideOf(p.team && p.team.id); if (!sd) continue;
+    const t = gameSec((p.period && p.period.number) || 1, clockSec(p.clock && p.clock.displayValue));
+    if (p.scoringPlay){
+      const pts = +p.scoreValue || 0; if (!pts) continue;
+      if (!run) run = { side:sd, a:0, b:0, tail:0 };
+      if (sd === run.side){ run.a += pts; run.tail = 0; }
+      else { run.b += pts; run.tail += pts; if (run.b > 4) run = { side:sd, a:run.tail, b:0, tail:0 }; }
+      if (!/free throw/i.test(p.text || "")) lastFG[sd] = t;
+    }
+  }
+  const bits = [];
+  if (run && run.a >= 5 && run.a - run.b >= 5) bits.push(`<b style="--tc:${S.teams[run.side].color}"><i></i>${esc(S.teams[run.side].abbr)} on a ${run.a}-${run.b} run</b>`);
+  if (S.state === "in"){
+    for (const sd of ["away","home"]){
+      const since = lastFG[sd] == null ? nowSec : nowSec - lastFG[sd];
+      if (since >= 120) bits.push(`<span class="dry">${esc(S.teams[sd].abbr)} no FG in ${Math.floor(since / 60)}:${String(Math.floor(since % 60)).padStart(2, "0")}</span>`);
+    }
+  }
+  // team fouls this period (offensive fouls and technicals don't count) and timeouts
+  if (cfg.league === "nba" || cfg.league === "wnba"){
+    const f = { away:0, home:0 }, l2 = { away:0, home:0 }, to = { away:0, home:0 }, toQ4 = { away:0, home:0 }, toL3 = { away:0, home:0 };
+    const pLen = (per <= NQ ? QLEN : 5) * 60;
+    for (const p of plays){
+      const ty = String((p.type && p.type.text) || ""), sd = sideOf(p.team && p.team.id); if (!sd) continue;
+      const pp = (p.period && p.period.number) || 1, ck = clockSec(p.clock && p.clock.displayValue);
+      if (/timeout/i.test(ty) && !/official/i.test(ty)){ to[sd]++; if (pp === 4) toQ4[sd]++; if (pp === 4 && ck <= 180) toL3[sd]++; }
+      if (pp !== per || !/foul/i.test(ty) || /offensive|technical|turnover/i.test(ty)) continue;
+      f[sd]++; if (ck <= 120) l2[sd]++;
+    }
+    const cap = per > NQ ? 3 : 4;
+    const ck = clockSec(st.displayClock);
+    const fl = sd => { const pen = f[sd] >= cap || (ck <= 120 && l2[sd] >= 1);
+      return `<span class="${pen ? "pen" : ""}">${esc(S.teams[sd].abbr)} ${f[sd]}${pen ? " · penalty" : ""}</span>`; };
+    if (S.state === "in") bits.push(`<span class="grpx">Fouls ${per > NQ ? "OT" : "Q" + per}</span>${fl("away")}${fl("home")}`);
+    if (cfg.league === "nba" && S.state === "in" && per <= NQ){
+      const left = sd => { let x = 7 - to[sd]; if (per === 4) x = Math.min(x, 4 - toQ4[sd]); if (per === 4 && ck <= 180) x = Math.min(x, 2 - toL3[sd]); return Math.max(0, x); };
+      bits.push(`<span class="grpx">Timeouts left</span><span>${esc(A.abbr)} ${left("away")}</span><span>${esc(H.abbr)} ${left("home")}</span>`);
+    }
+  }
+  el.hidden = !bits.length;
+  el.innerHTML = bits.join("");
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape" && DR.id) closePlayer(); });
 document.addEventListener("click", e => {
