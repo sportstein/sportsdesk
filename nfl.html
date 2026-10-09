@@ -7,10 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="boardkit.css?v=4">
+<link rel="stylesheet" href="boardkit.css?v=5">
 </head>
 <body>
-<script src="boardkit.js?v=4"></script>
+<script src="boardkit.js?v=5"></script>
 <script>
 /* ==================================================================
    NFL spotting board
@@ -76,32 +76,44 @@ function chipLine(p, row){
   return bits.join(" · ");
 }
 /* season line from ESPN's overview (labels repeat for passing/rushing, so the second set gets _2) */
+/* season numbers come from ESPN's stat sheet, one category per job (passing, rushing, receiving, defensive, kicking) */
+const NFL_SEASON = (() => { const d = new Date(); return d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1; })();
+async function seasonOf(p){
+  const st = await SD.stats(p.id);
+  const cur = {}; let any = false;
+  for (const k in st){ if (k === "_career") continue; if (String(st[k]._season) === String(NFL_SEASON)){ cur[k] = st[k]; any = true; } }
+  return any ? cur : null;
+}
+const used = c => c && Object.keys(c).some(k => !k.startsWith("_") && k !== "GP" && c[k] !== "-" && c[k] !== "0" && c[k] !== "");
 function seasonLine(p){
   const s = p.season;
-  if (p.season === undefined) return `<span class="lab">SEASON</span>Loading…`;
-  if (!s || Object.keys(s).filter(k => !k.startsWith("_")).every(k => s[k] === "-")) return `<span class="lab">SEASON</span>No stats this season`;
-  const lab = `<span class="lab">SEASON${s.GP ? " · " + esc(s.GP) + " GP" : ""}</span>`;
-  if (p.pos === "QB") return lab + `<b>${comma(s.YDS)}</b> yds · <b>${esc(s.TD ?? "–")}</b> TD · <b>${esc(s.INT ?? "–")}</b> INT · <b>${esc(s["CMP%"] ?? "–")}</b> cmp% · <b>${esc(s.RTG ?? "–")}</b> rtg`;
-  if (s.REC !== undefined) return lab + `<b>${esc(s.REC)}</b> rec · <b>${comma(s.YDS)}</b> yds · <b>${esc(s.TD ?? "–")}</b> TD${s.CAR && s.CAR !== "-" && +s.CAR > 5 ? ` · <b>${esc(s.CAR)}</b> car <b>${comma(s.YDS_2)}</b> rush yds` : ""}`;
-  if (s.CAR !== undefined) return lab + `<b>${esc(s.CAR)}</b> car · <b>${comma(s.YDS)}</b> yds · <b>${esc(s.AVG ?? "–")}</b> ypc · <b>${esc(s.TD ?? "–")}</b> TD`;
-  if (s.TOT !== undefined) return lab + `<b>${esc(s.TOT)}</b> tkl · <b>${esc(s.SACK ?? "–")}</b> sacks · <b>${esc(s.INT ?? "–")}</b> INT`;
-  const keys = Object.keys(s).filter(k => !k.startsWith("_")).slice(0, 5);
-  return lab + keys.map(k => `<b>${esc(s[k])}</b> ${esc(k.toLowerCase())}`).join(" · ");
+  if (s === undefined) return `<span class="lab">SEASON</span>Loading…`;
+  if (!s) return `<span class="lab">SEASON</span>No stats this season`;
+  const P = s.passing, R = s.rushing, C = s.receiving, D = s.defensive, K = s.kicking, U = s.punting;
+  const gp = (P || R || C || D || K || U || {}).GP;
+  const lab = `<span class="lab">SEASON${gp ? " · " + esc(gp) + " GP" : ""}</span>`;
+  if (p.pos === "QB" && used(P)) return lab + `<b>${comma(P.YDS)}</b> yds · <b>${esc(P.TD)}</b> TD · <b>${esc(P.INT)}</b> INT · <b>${esc(P["CMP%"])}</b> cmp% · <b>${esc(P.RTG)}</b> rtg${R && +R.YDS ? ` · <b>${comma(R.YDS)}</b> rush yds` : ""}`;
+  if (/^(RB|FB)$/.test(p.pos) && used(R)) return lab + `<b>${esc(R.CAR)}</b> car · <b>${comma(R.YDS)}</b> yds · <b>${esc(R.AVG)}</b> ypc · <b>${esc(R.TD)}</b> TD${C && +C.REC ? ` · <b>${esc(C.REC)}</b> rec <b>${comma(C.YDS)}</b> yds` : ""}`;
+  if (used(C)) return lab + `<b>${esc(C.REC)}</b> rec · <b>${esc(C.TGTS)}</b> tgt · <b>${comma(C.YDS)}</b> yds · <b>${esc(C.TD)}</b> TD`;
+  if (used(R)) return lab + `<b>${esc(R.CAR)}</b> car · <b>${comma(R.YDS)}</b> yds · <b>${esc(R.TD)}</b> TD`;
+  if (used(K)) return lab + `<b>${esc(K.FG)}</b> FG · <b>${esc(K["FG%"])}</b>% · long <b>${esc(K.LNG)}</b>`;
+  if (used(D)) return lab + `<b>${esc(D.TOT)}</b> tkl · <b>${esc(D.SACK)}</b> sacks · <b>${esc(D.INT)}</b> INT · <b>${esc(D.PD)}</b> PD`;
+  return `<span class="lab">SEASON</span>No stats this season`;
 }
 function seasonMini(p){
   const s = p.season;
-  if (p.season === undefined) return "…";
-  if (!s || s.YDS === "-" || s.YDS == null && s.TOT == null) return "";
-  if (p.pos === "QB") return `SEASON <b>${comma(s.YDS)} yds · ${esc(s.TD)} TD</b>`;
-  if (s.REC !== undefined) return `SEASON <b>${esc(s.REC)} rec · ${comma(s.YDS)} yds</b>`;
-  if (s.CAR !== undefined) return `SEASON <b>${comma(s.YDS)} yds · ${esc(s.TD)} TD</b>`;
+  if (s === undefined) return "…";
+  if (!s) return "";
+  const P = s.passing, R = s.rushing, C = s.receiving;
+  if (p.pos === "QB" && used(P)) return `SEASON <b>${comma(P.YDS)} yds · ${esc(P.TD)} TD</b>`;
+  if (/^(RB|FB)$/.test(p.pos) && used(R)) return `SEASON <b>${comma(R.YDS)} rush yds · ${esc(R.TD)} TD</b>`;
+  if (used(C)) return `SEASON <b>${esc(C.REC)} rec · ${comma(C.YDS)} yds</b>`;
   return "";
 }
 function mainYds(p){
-  const s = p.season || {}, row = SD.S.live[p.id];
+  const s = p.season || {}, row = SD.S.live[p.id], y = c => c ? +String(c.YDS || 0).replace(/,/g, "") || 0 : 0;
   const tn = row ? (+v(row,"passing","YDS") || 0) + (+v(row,"rushing","YDS") || 0) + (+v(row,"receiving","YDS") || 0) : 0;
-  const se = +String(s.YDS || 0).replace(/,/g, "") || 0;
-  return tn * 1000 + se;
+  return tn * 100000 + y(s.passing) + y(s.rushing) + y(s.receiving);
 }
 function groups(side){
   const ps = SD.S.teams[side].players.filter(p => !p.ir && !p.ps);
@@ -240,7 +252,7 @@ function playerAdvanced(p, row, snap){
     const scrim = nn(row.rushing && row.rushing.YDS) + nn(row.receiving && row.receiving.YDS);
     if (scrim >= 40 && T.yards > 0 && p.pos !== "QB") say.push(`${scrim} scrimmage yards, ${pct(scrim, T.yards)} of the offense.`);
   }
-  const st = SD.once("stats:" + p.id, () => SD.stats(p.id));
+  const st = p.season === undefined ? "pending" : p.season;
   if (st && st !== "pending"){
     const gp = c => nn(c && c.GP) || null;
     const P = st.passing, R = st.rushing, C = st.receiving, D = st.defensive, K = st.kicking;
@@ -331,13 +343,6 @@ function detail(p, row, snap){
   if (row && row.interceptions && nz(row.interceptions.INT)) say.push(`${row.interceptions.INT} interception${+row.interceptions.INT === 1 ? "" : "s"} for ${row.interceptions.YDS} return yards.`);
   if (row && row.kicking) say.push(`${row.kicking.FG} on field goals, long of ${row.kicking.LONG}. ${row.kicking.XP} on extra points.`);
   if (row && row.punting) say.push(`${row.punting.NO} punts, ${row.punting.AVG} average, ${row.punting["IN 20"]} inside the 20.`);
-  // season context
-  if (p.season){
-    if (p.pos === "QB" && s.YDS) say.push(`Season: ${comma(s.YDS)} yards, ${s.TD} TD, ${s.INT} INT${s["CMP%"] ? `, ${s["CMP%"]}% completions` : ""}.`);
-    else if (s.REC !== undefined && s.REC !== "-") say.push(`Season: ${s.REC} catches, ${comma(s.YDS)} yards, ${s.TD} TD.`);
-    else if (s.CAR !== undefined && s.CAR !== "-") say.push(`Season: ${s.CAR} carries, ${comma(s.YDS)} yards, ${s.TD} TD.`);
-    else if (s.TOT !== undefined && s.TOT !== "-") say.push(`Season: ${s.TOT} tackles, ${s.SACK} sacks, ${s.INT} INT.`);
-  }
   if (g && g.length){
     const key = p.pos === "QB" ? "YDS" : g[0].REC !== undefined ? "YDS" : g[0].CAR !== undefined ? "YDS" : g[0].TOT !== undefined ? "TOT" : null;
     if (key){
@@ -382,7 +387,7 @@ SD.start({
     }
     return out;
   },
-  seasonOf: p => SD.overview(p.id, /regular/i),
+  seasonOf,
   bio: p => esc([p.ht, p.wt, p.age ? p.age + " yrs" : "", p.exp != null ? (p.exp === 0 ? "rookie" : `${p.exp} yr${p.exp === 1 ? "" : "s"} pro`) : ""].filter(Boolean).join(" · ")) + (p.college ? ` · <b>${esc(p.college)}</b>` : ""),
   advancedRows, advancedFoot: () => "Avg start = average field position where drives began. Explosive = 20+ yard runs or catches.",
   extra, parseLive, tonight, chipLine, seasonLine, seasonMini, groups, clock, possession, situation, pulse, feed, teamRows, context, detail,
