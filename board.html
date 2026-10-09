@@ -40,7 +40,7 @@ button,input,textarea{font:inherit;color:inherit}
 .bar form{margin-left:0}
 
 /* layout: away roster | the desk | home roster */
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 420px minmax(0,1fr);grid-template-areas:"away desk home";gap:14px;margin:12px 18px 30px;align-items:start}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(360px,28vw,440px) minmax(0,1fr);grid-template-areas:"away desk home";gap:14px;margin:12px 18px 30px;align-items:start}
 .col.away{grid-area:away} .col.home{grid-area:home}
 .desk{grid-area:desk;position:sticky;top:10px;max-height:calc(100vh - 20px);overflow-y:auto;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin}
 .desk .alerts iframe{width:100%;height:340px;border:0;background:var(--ink);display:block}
@@ -89,8 +89,9 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .tn{display:flex;align-items:stretch;margin-top:7px;background:var(--ink);border:1px solid var(--line)}
 .tn .lab{background:var(--chair);color:#fff;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:15px;letter-spacing:.05em;padding:0 9px;display:flex;align-items:center}
 .tn .st{flex:1;min-width:0;text-align:center;padding:4px 2px 3px}
-.tn .st b{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:clamp(19px,1.6vw,27px);line-height:1;color:var(--chalk)}
+.tn .st b{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:clamp(17px,1.45vw,27px);white-space:nowrap;letter-spacing:-.01em;line-height:1;color:var(--chalk)}
 .tn .st i{display:block;font-style:normal;font-size:11px;font-weight:700;color:var(--dim);letter-spacing:.04em;margin-top:2px}
+.tn .st.w{flex:1.55}
 .tn .st.up b{color:var(--up)} .tn .st.warn b{color:var(--down)}
 .tn .none{padding:7px 10px;color:var(--dim);font-weight:600}
 .ssn{margin-top:6px;font-size:14px;font-weight:600;color:var(--dim)}
@@ -170,7 +171,7 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .tn.sm{margin-top:4px}
 .tn.sm .lab{font-size:11px;padding:0 6px}
 .tn.sm .st{padding:2px 1px}
-.tn.sm .st b{font-size:17px}
+.tn.sm .st b{font-size:16px}
 .tn.sm .st i{font-size:9px;margin-top:1px}
 .tn.sm .none{padding:3px 8px;font-size:13px}
 .pc.mini .pnote{font-size:13px;margin-top:3px}
@@ -389,7 +390,7 @@ function card(p, mini){
       const above = k => { const a = num(s[k]), b = num(l[k]); return a != null && b != null && b > a; };
       const items = [["PTS","PTS",above("PTS")],["REB","REB",above("REB")],["AST","AST",above("AST")],["FG","FG"],["3PT","3PT"],["FT","FT"],["STL","STL"],["BLK","BLK"],["PF","PF",false,(num(l.PF) || 0) >= 4],["MIN","MIN"]];
       nowRow = `<div class="tn"><span class="lab">TONIGHT</span>` + items.map(([lab, k, up, warn]) =>
-        `<span class="st${up ? " up" : ""}${warn ? " warn" : ""}"><b>${f(l[k])}</b><i>${lab}</i></span>`).join("") + `</div>`;
+        `<span class="st${up ? " up" : ""}${warn ? " warn" : ""}${/FG|3PT|FT/.test(lab) ? " w" : ""}"><b>${f(l[k])}</b><i>${lab}</i></span>`).join("") + `</div>`;
     }
   }
   const note = store.get("p:" + p.id);
@@ -607,7 +608,7 @@ function openPlayer(id){
   document.querySelectorAll(".pc.sel").forEach(c => c.classList.remove("sel"));
   document.querySelectorAll(`.pc[data-pid="${id}"]`).forEach(c => c.classList.add("sel"));
   renderDrawer();
-  d.scrollIntoView({ block:"nearest" });
+  const desk = $("#desk"); if (desk.scrollHeight > desk.clientHeight) desk.scrollTop = d.offsetTop - desk.offsetTop - 6;
   logOf(id).then(() => { if (DR.id === id) renderDrawer(); });
 }
 function closePlayer(){
