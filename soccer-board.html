@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="boardkit.css?v=5">
+<link rel="stylesheet" href="boardkit.css?v=6">
 <style>
 .pc .yc,.chip .yc{font-weight:800;font-size:12px;background:#e8c11c;color:#111;padding:1px 6px}
 .pc .rc{font-weight:800;font-size:12px;background:var(--chair);color:#fff;padding:1px 6px}
@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-<script src="boardkit.js?v=5"></script>
+<script src="boardkit.js?v=6"></script>
 <script>
 /* ==================================================================
    Soccer spotting board: Premier League and Champions League
@@ -76,6 +76,55 @@ function parseLive(snap){
 }
 const onPitch = row => row && ((row.starter && !row.subOut) || (row.subIn && !row.subOut));
 
+
+/* ---------- SportsDesk xG (estimate) ----------
+   ESPN gives no shot coordinates, but its commentary describes every shot: where it was taken,
+   foot or head, and how it came (fast break, through ball, cross, set piece). Each shot gets a value
+   from public xG averages for that kind of chance. Labelled an estimate everywhere it shows. */
+function shotXG(t){
+  const T = t.toLowerCase();
+  if (/penalty/.test(T) && /converts the penalty|penalty saved|penalty missed|fails to capitalise/.test(T)) return { xg:.76, kind:"penalty" };
+  let base, kind;
+  if (/very close range/.test(T)){ base = .45; kind = "very close range"; }
+  else if (/centre of the six yard box|six yard box/.test(T) && !/side of the six yard box/.test(T)){ base = .38; kind = "six-yard box"; }
+  else if (/side of the six yard box/.test(T)){ base = .22; kind = "edge of the six-yard box"; }
+  else if (/centre of the box/.test(T)){ base = .13; kind = "middle of the box"; }
+  else if (/side of the box/.test(T)){ base = .06; kind = "side of the box"; }
+  else if (/difficult angle/.test(T)){ base = /long range/.test(T) ? .02 : .04; kind = "tight angle"; }
+  else if (/more than 35 yards|long range|from the halfway|own half/.test(T)){ base = .015; kind = "long range"; }
+  else if (/outside the box/.test(T)){ base = /free kick/.test(T) ? .06 : .035; kind = /free kick/.test(T) ? "direct free kick" : "outside the box"; }
+  else { base = .07; kind = "shot"; }
+  let m = 1;
+  if (/header/.test(T)) m *= .6;
+  if (/fast break/.test(T)) m *= 1.25;
+  if (/through ball/.test(T)) m *= 1.2;
+  if (/with a cross/.test(T) && !/header/.test(T)) m *= .85;
+  if (/set piece|corner/.test(T)) m *= .9;
+  return { xg:Math.min(.95, base * m), kind };
+}
+let xgCache = { key:"", val:null };
+function xgOf(snap){
+  const com = snap.sum.commentary || [];
+  const key = com.length + ":" + ((com[com.length - 1] || {}).sequence || "");
+  if (xgCache.key === key) return xgCache.val;
+  const S = SD.S, out = { away:0, home:0, shots:{ away:0, home:0 }, big:{ away:0, home:0 }, byPlayer:{}, list:[] };
+  const sideByName = nm => nm === S.teams.away.name || nm === S.teams.away.short ? "away" : nm === S.teams.home.name || nm === S.teams.home.short ? "home" : null;
+  for (const c of com){
+    const t = String(c.text || ""), pl = c.play || {};
+    if (!/^(Goal!|Attempt (saved|missed|blocked)|Penalty (saved|missed))/i.test(t) || /own goal/i.test(t)) continue;
+    if (pl.period && pl.period.number === 5) continue; // shootout
+    const tm = (t.match(/\(([^)]+)\)/) || [])[1] || (pl.team && pl.team.displayName) || "";
+    const side = sideByName(tm) || sideByName(pl.team && pl.team.displayName); if (!side) continue;
+    const part = (pl.participants || [])[0], pid = part && part.athlete ? String(part.athlete.id) : (Object.values(S.players).find(p => t.includes(p.name + " (")) || {}).id;
+    const v = shotXG(t), goal = /^goal!/i.test(t);
+    out[side] += v.xg; out.shots[side]++; if (v.xg >= .3) out.big[side]++;
+    if (pid){ const b = out.byPlayer[pid] || (out.byPlayer[pid] = { xg:0, shots:0, goals:0, best:0 }); b.xg += v.xg; b.shots++; if (goal) b.goals++; b.best = Math.max(b.best, v.xg); }
+    out.list.push({ key:"xg" + (pl.id || c.sequence), side, pid, xg:v.xg, kind:v.kind, goal, min:(c.time && c.time.displayValue) || "", text:t });
+  }
+  xgCache = { key, val:out };
+  return out;
+}
+const x2 = x => (Math.round(x * 100) / 100).toFixed(2);
 function tonight(p, row){
   const S = SD.S;
   if (S.state === "pre" || !row) return null;
@@ -83,7 +132,7 @@ function tonight(p, row){
   const st = row.st;
   if (isGK(p)) return { label:"MATCH", items:[["SAVES", st.SV ?? 0], ["CONC", st.GA ?? 0, n(st.GA) ? "warn" : ""], ["ON TGT FACED", n(st.SV) + n(st.GA), "w"]] };
   return { label:"MATCH", items:[["G", row.goals.length || st.G || 0, row.goals.length ? "up" : ""], ["A", row.assists.length || st.A || 0, row.assists.length ? "up" : ""],
-    ["SHOTS", st.SHOT ?? 0], ["ON TGT", st.SOG ?? 0, "w"], ["FOULS", st.FC ?? 0], ["FOULED", st.FA ?? 0, "w"], ["OFFS", st.OF ?? 0]] };
+    ["SHOTS", st.SHOT ?? 0], ["ON TGT", st.SOG ?? 0, "w"], ["xG", (() => { const b = SD.S.snap && xgOf(SD.S.snap).byPlayer[p.id]; return b ? x2(b.xg) : "0.00"; })()], ["FOULS", st.FC ?? 0], ["FOULED", st.FA ?? 0, "w"]] };
 }
 function badges(p, row){
   const S = SD.S, b = [];
@@ -144,12 +193,14 @@ function pulse(snap){
   if (!T.away || !T.home) return "";
   const S = SD.S, A = S.teams.away.abbr, H = S.teams.home.abbr;
   const pa = Math.round(n(T.away.possessionPct)), ph = Math.round(n(T.home.possessionPct));
-  return `<span class="grpx">Possession</span><span>${esc(A)} ${pa}% · ${esc(H)} ${ph}%</span>` +
+  const X = xgOf(snap);
+  return `<span class="grpx" title="SportsDesk estimate from ESPN shot descriptions">xG (est.)</span><span>${esc(A)} ${x2(X.away)} – ${x2(X.home)} ${esc(H)}</span>` + `<span class="grpx">Possession</span><span>${esc(A)} ${pa}% · ${esc(H)} ${ph}%</span>` +
     `<span class="grpx">Shots (on target)</span><span>${esc(T.away.totalShots ?? 0)} (${esc(T.away.shotsOnTarget ?? 0)}) – ${esc(T.home.totalShots ?? 0)} (${esc(T.home.shotsOnTarget ?? 0)})</span>` +
     `<span class="grpx">Corners</span><span>${esc(T.away.wonCorners ?? 0)}–${esc(T.home.wonCorners ?? 0)}</span>`;
 }
 function feed(snap){
   const S = SD.S, items = [];
+  for (const x of xgOf(snap).list) if (!x.goal && x.xg >= .3) items.push({ key:x.key, side:x.side, kicker:`Big chance missed · ${x2(x.xg)} xG`, head:x.text, stamp:x.min, _min:parseInt(x.min, 10) || 0 });
   for (const k of snap.sum.keyEvents || []){
     const ty = String((k.type && k.type.text) || ""), side = sideOfTeam(k.team && k.team.id), m = minuteOf(k), txt = String(k.text || "");
     if (/kickoff|start delay|end delay/i.test(ty)) continue;
@@ -162,7 +213,7 @@ function feed(snap){
     else if (/var|penalty|missed|saved/i.test(ty)) items.push({ key:k.id, side, big:/penalty/i.test(ty), kicker:ty, head:txt, stamp:m });
     else if (/halftime|half ends|end regular|full time|match ends|second half begins/i.test(ty + " " + txt)) items.push({ key:k.id, side:null, kicker:ty, head:txt, stamp:m });
   }
-  return items;
+  return items.map((x, i) => [x, i]).sort((a, b) => ((parseInt(a[0].stamp, 10) || 0) - (parseInt(b[0].stamp, 10) || 0)) || a[1] - b[1]).map(x => x[0]);
 }
 function teamRows(snap){
   const T = {}; for (const t of (snap.sum.boxscore && snap.sum.boxscore.teams) || []){ const sd = sideOfTeam(t.team.id); const o = T[sd] = {}; (t.statistics || []).forEach(x => o[x.name] = x.displayValue); }
@@ -226,7 +277,10 @@ function advancedRows(snap){
   const r = (lab, fa, fh, dir, fmt) => [lab, fmt(fa), fmt(fh), fa, fh, dir];
   const P = x => x == null ? "–" : Math.round(x * 100) + "%";
   const conv = sd => n(T[sd].totalShots) ? goals(sd) / n(T[sd].totalShots) : null;
-  return [r("Shot conversion", conv("away"), conv("home"), 1, P), r("Shot accuracy", ratio("away","shotsOnTarget","totalShots"), ratio("home","shotsOnTarget","totalShots"), 1, P),
+  const X = xgOf(snap), per = sd => X.shots[sd] ? X[sd] / X.shots[sd] : null, sgn = x => (x > 0 ? "+" : "") + x2(x);
+  return [r("xG (estimate)", X.away, X.home, 1, x2), r("xG per shot", per("away"), per("home"), 1, x => x == null ? "–" : x2(x)),
+    r("Big chances (0.30+ xG)", X.big.away, X.big.home, 1, x => String(x)), r("Goals minus xG", goals("away") - X.away, goals("home") - X.home, 0, sgn),
+    r("Shot conversion", conv("away"), conv("home"), 1, P), r("Shot accuracy", ratio("away","shotsOnTarget","totalShots"), ratio("home","shotsOnTarget","totalShots"), 1, P),
     r("Passes completed", n(T.away.accuratePasses), n(T.home.accuratePasses), 1, x => String(x)), r("Cross accuracy", ratio("away","accurateCrosses","totalCrosses"), ratio("home","accurateCrosses","totalCrosses"), 1, P),
     r("Long-ball accuracy", ratio("away","accurateLongBalls","totalLongBalls"), ratio("home","accurateLongBalls","totalLongBalls"), 1, P),
     r("Tackle success", ratio("away","effectiveTackles","totalTackles"), ratio("home","effectiveTackles","totalTackles"), 1, P),
@@ -240,6 +294,14 @@ function playerAdvanced(p, row, snap, ov){
     if (!isGK(p) && (row.starter || row.subIn)){
       const T = teamStat(snap)[p.side] || {};
       todayT.push(SD.tile(pc(n(st.SOG), n(st.SHOT)), "Shot accuracy"), SD.tile(pc(n(st.SHOT), n(T.totalShots)), "Share of team shots"));
+      const b = xgOf(snap).byPlayer[p.id];
+      if (b){
+        todayT.unshift(SD.tile(x2(b.xg), "xG (est.)"));
+        say.push(`${x2(b.xg)} xG from ${b.shots} shot${b.shots === 1 ? "" : "s"} today${b.best >= .3 ? `, best chance worth ${x2(b.best)}` : ""}.`);
+        if (b.goals && b.goals - b.xg >= .6) say.push(`Finishing well above expectation: ${b.goals} goal${b.goals === 1 ? "" : "s"} from ${x2(b.xg)} xG.`);
+        else if (!b.goals && b.xg >= .6) say.push(`Should have scored by the numbers: ${x2(b.xg)} xG and nothing to show for it.`);
+        xgOf(snap).list.filter(x => x.pid === p.id && x.goal).forEach(x => say.push(`His ${x.min} goal was a ${x2(x.xg)} xG chance (${x.kind}).`));
+      }
       if (n(st.SHOT) >= 3 && n(T.totalShots)) say.push(`${st.SHOT} of ${p.side === "home" ? SD.S.teams.home.abbr : SD.S.teams.away.abbr}'s ${T.totalShots} shots are his.`);
     }
   }
@@ -326,7 +388,7 @@ SD.start({
     return out;
   },
   bio: p => esc([p.nat, p.age ? p.age + " yrs" : "", p.ht].filter(Boolean).join(" · ")),
-  advancedRows, advancedFoot: () => "Shot conversion = goals per shot. Accuracy = share of shots on target.",
+  advancedRows, advancedFoot: () => "xG is a SportsDesk estimate from ESPN's shot descriptions (where, foot or head, how the chance came), not Opta's. Shot conversion = goals per shot.",
   parseLive, tonight, badges, seasonLine, seasonMini, chipLine, groups, clock, pulse, feed, teamRows, context, detail
 });
 </script>
