@@ -115,7 +115,9 @@ function xgOf(snap){
     if (pl.period && pl.period.number === 5) continue; // shootout
     const tm = (t.match(/\(([^)]+)\)/) || [])[1] || (pl.team && pl.team.displayName) || "";
     const side = sideByName(tm) || sideByName(pl.team && pl.team.displayName); if (!side) continue;
-    const part = (pl.participants || [])[0], pid = part && part.athlete ? String(part.athlete.id) : (Object.values(S.players).find(p => t.includes(p.name + " (")) || {}).id;
+    const part = (pl.participants || [])[0], nm = part && part.athlete && part.athlete.displayName;
+    const pid = part && part.athlete && part.athlete.id ? String(part.athlete.id)
+      : ((nm && Object.values(S.players).find(p => p.name === nm)) || Object.values(S.players).find(p => t.includes(p.name + " (")) || {}).id;
     const v = shotXG(t), goal = /^goal!/i.test(t);
     out[side] += v.xg; out.shots[side]++; if (v.xg >= .3) out.big[side]++;
     if (pid){ const b = out.byPlayer[pid] || (out.byPlayer[pid] = { xg:0, shots:0, goals:0, best:0 }); b.xg += v.xg; b.shots++; if (goal) b.goals++; b.best = Math.max(b.best, v.xg); }
