@@ -622,7 +622,7 @@ function renderDrawer(){
       </div>
       <div class="two">
         <div><h5>Shot zones</h5><table>${zrow("Rim", "At the rim")}${zrow("Short", "Short (5–14 ft)")}${zrow("Mid", "Midrange")}${zrow("3PT", "Three")}${zrow("FT", "Free throws")}</table>${shots.length ? "" : '<p class="dim">No shots logged yet.</p>'}</div>
-        <div><h5>Points by ${NQ === 2 ? "half" : "quarter"}</h5><table>${Array.from({ length:nper }, (_, i) => i + 1).filter(n => n <= per || n <= NQ).map(n => `<tr><td>${esc(perName(n).replace(/ (quarter|half)/, ""))}</td><td>${q[n] || 0}</td></tr>`).join("")}</table></div>
+        <div><h5>Points by ${NQ === 2 ? "half" : "quarter"}</h5><table>${Array.from({ length:nper }, (_, i) => i + 1).filter(n => n <= Math.max(per, 1)).map(n => `<tr><td>${esc(perName(n).replace(/ (quarter|half)/, ""))}</td><td>${q[n] || 0}</td></tr>`).join("")}</table></div>
       </div>`;
   } else if (l){
     tonight = `<h4>Tonight</h4><p class="dim">${l.inactive ? "Inactive." : S.state === "post" ? "Did not play." : "Hasn't checked in yet."}</p>`;
