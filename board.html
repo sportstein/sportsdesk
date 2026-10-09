@@ -32,24 +32,27 @@ button,input,textarea{font:inherit;color:inherit}
 .bar button,.pbtn{background:var(--desk);border:0;font-weight:700;padding:5px 12px;cursor:pointer}
 .pbtn{background:var(--slate2)}
 
-/* matchup header: one slim line (the score lives in the alerts box) */
-.match{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;margin:10px 18px 0;background:var(--slate);padding:7px 14px;font-weight:600;font-size:15px}
-.match .tm{display:flex;align-items:baseline;gap:7px}
-.match .tm i{width:6px;align-self:stretch;background:var(--tc)}
-.match .tm b{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:24px;line-height:1}
-.match .tm span{color:var(--dim)}
-.match .at{color:var(--dim);font-weight:700}
-.match .meta{color:var(--dim);margin-left:auto;text-align:right}
-.match #clk{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:20px;background:var(--chalk);color:var(--ink);padding:1px 10px}
+/* matchup line lives in the top bar */
+.mu{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--dim);min-width:0;flex:1 1 auto}
+.mu b{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:21px;color:var(--chalk);display:inline-flex;align-items:center;gap:6px}
+.mu b i{width:5px;height:18px;background:var(--tc)}
+.mu .meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:6px}
+.bar form{margin-left:0}
 
-/* context strip */
-.ctx{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px;margin:12px 18px 0;align-items:stretch}
-@media (max-width:900px){ .ctx{grid-template-columns:1fr} }
-.ctx .side{display:flex;flex-direction:column;gap:12px;min-width:0}
-.ctx .side .box{padding:8px 12px}
-.ctx .side .box h3{font-size:15px;margin-bottom:3px}
-.ctx .alerts{display:flex;flex-direction:column}
-.ctx .alerts iframe{width:100%;flex:1;min-height:240px;border:0;background:var(--ink);display:block}
+/* layout: away roster | the desk | home roster */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 420px minmax(0,1fr);grid-template-areas:"away desk home";gap:14px;margin:12px 18px 30px;align-items:start}
+.col.away{grid-area:away} .col.home{grid-area:home}
+.desk{grid-area:desk;position:sticky;top:10px;max-height:calc(100vh - 20px);overflow-y:auto;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin}
+.desk .alerts iframe{width:100%;height:340px;border:0;background:var(--ink);display:block}
+.desk.has-detail .alerts iframe{height:200px}
+.desk .box{padding:8px 12px}
+.desk .box h3{font-size:15px;margin-bottom:3px}
+@media (max-width:1279px){
+  .layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"desk desk" "away home"}
+  .desk{position:static;max-height:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+  .desk .alerts{grid-row:span 3}
+}
+@media (max-width:860px){ .layout{grid-template-columns:1fr;grid-template-areas:"desk" "away" "home"} .desk{grid-template-columns:1fr} }
 .box{background:var(--slate);padding:10px 12px}
 .box h3{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:17px;color:var(--dim);margin-bottom:6px}
 .l5{display:flex;flex-direction:column;gap:4px}
@@ -63,8 +66,6 @@ button,input,textarea{font:inherit;color:inherit}
 textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid var(--line);padding:8px;font-weight:600;resize:vertical;line-height:1.4}
 
 /* rosters */
-.teams{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 18px 30px}
-@media (max-width:1000px){ .teams{grid-template-columns:1fr} }
 .col h2{display:flex;align-items:baseline;gap:10px;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:26px;
   border-bottom:5px solid var(--tc);padding-bottom:4px;margin-bottom:6px}
 .col h2 span{font-family:"Barlow Semi Condensed",sans-serif;font-weight:600;font-size:15px;color:var(--dim)}
@@ -88,7 +89,7 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .tn{display:flex;align-items:stretch;margin-top:7px;background:var(--ink);border:1px solid var(--line)}
 .tn .lab{background:var(--chair);color:#fff;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:15px;letter-spacing:.05em;padding:0 9px;display:flex;align-items:center}
 .tn .st{flex:1;min-width:0;text-align:center;padding:4px 2px 3px}
-.tn .st b{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:27px;line-height:1;color:var(--chalk)}
+.tn .st b{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:clamp(19px,1.6vw,27px);line-height:1;color:var(--chalk)}
 .tn .st i{display:block;font-style:normal;font-size:11px;font-weight:700;color:var(--dim);letter-spacing:.04em;margin-top:2px}
 .tn .st.up b{color:var(--up)} .tn .st.warn b{color:var(--down)}
 .tn .none{padding:7px 10px;color:var(--dim);font-weight:600}
@@ -97,8 +98,8 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .ssn b{color:#c9c7d6;font-weight:700}
 .ssn.big{font-size:17px}
 .ssn.big b{color:var(--chalk)}
-.note{grid-column:2;margin-top:6px;width:100%;background:transparent;border:0;border-top:1px dashed var(--line);padding:5px 0 0;font-weight:600;font-size:15px;color:var(--pencil);resize:none;min-height:1.6em;line-height:1.35;overflow:hidden}
-.note::placeholder{color:#4a4a63}
+.pnote{margin-top:5px;color:var(--pencil);font-weight:600;font-size:14px;line-height:1.3;white-space:pre-wrap}
+.pnote::before{content:"✎ "}
 .fold{margin-top:10px}
 .fold summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:baseline;padding:6px 8px;background:var(--slate);color:var(--dim);font-weight:600;font-size:14px}
 .fold summary::-webkit-details-marker{display:none}
@@ -118,46 +119,46 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
   :root{--ink:#fff;--slate:#fff;--slate2:#eee;--chalk:#000;--dim:#555;--line:#ccc;--pencil:#000}
   body{font-size:11px}
   .bar form,.pbtn,.status{display:none}
-  .match,.box,.pc{border-color:#000}
-  .mid{background:#eee}
-  .teams{grid-template-columns:1fr 1fr;gap:8px;margin:8px}
+  .box,.pc{border-color:#000}
+  .layout{grid-template-columns:1fr 1fr;grid-template-areas:"desk desk" "away home";gap:8px;margin:8px}
+  .desk{position:static;max-height:none;flex-direction:row} .desk .box{flex:1}
+  .desk .alerts,.detail{display:none}
   .pc{break-inside:avoid;padding:4px 6px 4px 0;margin-bottom:3px;border-bottom:1px solid #ccc}
   .pc .jn{font-size:26px}
   .pc .name{font-size:14px}
-  .note:placeholder-shown{display:none}
-  .ctx .alerts{display:none}
-  .ctx{grid-template-columns:1fr} .ctx .side{flex-direction:row} .ctx .side .box{flex:1}
   .wl i.W{background:#cfe9d8}.wl i.L{background:#f2cccc}
 }
 
-/* player drawer */
+/* player detail: lives in the desk column, never covers a roster */
 .pc{cursor:pointer}
 .pc:hover{background:var(--slate2)}
 .pc.sel{outline:2px solid var(--pencil);outline-offset:-2px}
-.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--ink);border-left:6px solid var(--tc,var(--desk));z-index:50;overflow-y:auto;padding:14px 18px 24px;transform:translateX(105%);transition:transform .18s ease;box-shadow:-20px 0 40px rgba(0,0,0,.5)}
-.drawer.on{transform:none}
-.drawer .dh{display:flex;align-items:center;gap:12px;position:sticky;top:-14px;background:var(--ink);padding:6px 0 8px;margin-top:-6px;z-index:1}
-.drawer .jn{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:46px;line-height:1;color:var(--tc)}
-.drawer .nm{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:30px;line-height:1}
-.drawer .x{margin-left:auto;background:var(--slate2);border:0;color:var(--chalk);font-size:26px;width:40px;height:40px;cursor:pointer}
-.drawer h4{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:18px;color:var(--dim);margin:16px 0 7px;letter-spacing:.02em}
-.drawer h5{font-weight:700;font-size:13px;color:var(--dim);margin:10px 0 4px}
-.drawer .dim{color:var(--dim);font-weight:600}
+.detail{background:var(--slate);border-top:5px solid var(--tc,var(--desk));padding:10px 12px 12px}
+.detail[hidden]{display:none}
+.detail .dh{display:flex;align-items:center;gap:10px}
+.detail .jn{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:38px;line-height:1;color:var(--tc)}
+.detail .nm{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:25px;line-height:1}
+.detail .x{margin-left:auto;background:var(--slate2);border:0;color:var(--chalk);font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap}
+.detail .x:hover{background:var(--chair)}
+.detail textarea.pn{width:100%;margin-top:8px;background:var(--ink);border:1px solid var(--line);color:var(--pencil);font-weight:600;font-size:15px;padding:6px 8px;resize:vertical;min-height:2.5em;line-height:1.35}
+.detail textarea.pn::placeholder{color:#4a4a63}
+.detail h4{font-family:"Big Shoulders Display",sans-serif;font-weight:800;font-size:17px;color:var(--dim);margin:12px 0 6px;letter-spacing:.02em}
+.detail h5{font-weight:700;font-size:13px;color:var(--dim);margin:8px 0 3px}
+.detail .dim{color:var(--dim);font-weight:600}
 .say{list-style:none}
-.say li{background:var(--slate);border-left:4px solid var(--pencil);padding:8px 11px;margin-bottom:6px;font-size:19px;font-weight:600;line-height:1.3}
+.say li{background:var(--ink);border-left:4px solid var(--pencil);padding:7px 10px;margin-bottom:5px;font-size:17px;font-weight:600;line-height:1.3}
 .say li b{color:var(--pencil);font-weight:800}
-.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.tile{background:var(--slate);padding:7px 9px}
-.tile b{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:28px;line-height:1}
-.tile i{display:block;font-style:normal;font-size:12px;font-weight:700;color:var(--dim);margin-top:3px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.tile{background:var(--ink);padding:6px 8px}
+.tile b{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:24px;line-height:1}
+.tile i{display:block;font-style:normal;font-size:11px;font-weight:700;color:var(--dim);margin-top:3px}
 .tile.up b{color:var(--up)} .tile.down b{color:var(--down)}
-.drawer .two{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
-.drawer table{width:100%;border-collapse:collapse;font-size:15px;font-weight:600}
-.drawer td,.drawer th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right}
-.drawer td:first-child,.drawer th:first-child{text-align:left}
-.drawer th{color:var(--dim);font-size:12px}
-.drawer .foot{font-size:12px;margin-top:16px}
-@media print{ .drawer{display:none} }
+.detail .two{display:grid;grid-template-columns:1.4fr 1fr;gap:10px}
+.detail table{width:100%;border-collapse:collapse;font-size:14px;font-weight:600}
+.detail td,.detail th{padding:3px 5px;border-bottom:1px solid var(--line);text-align:right}
+.detail td:first-child,.detail th:first-child{text-align:left}
+.detail th{color:var(--dim);font-size:11px}
+.detail .foot{font-size:12px;margin-top:12px}
 
 /* compact bench cards */
 .pc.mini{grid-template-columns:40px 1fr;padding:5px 8px 5px 0;margin-bottom:4px}
@@ -172,23 +173,14 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .tn.sm .st b{font-size:17px}
 .tn.sm .st i{font-size:9px;margin-top:1px}
 .tn.sm .none{padding:3px 8px;font-size:13px}
-.pc.mini .note{grid-column:2}
-/* "+ note" tucks under the jersey number so it costs no height */
-.pc > div:nth-child(2){grid-row:1 / span 2}
-.pc .jn{grid-row:1 !important;align-self:start}
-.addnote{grid-column:1;grid-row:2;justify-self:end;align-self:end;background:none;border:0;color:#4a4a63;font-weight:700;font-size:11px;padding:0 0 2px;cursor:pointer;white-space:nowrap}
-.pc:hover .addnote{color:var(--dim)}
-/* drawer covers only the clicked team's column */
-.drawer{width:min(100vw,max(460px,calc(50vw - 11px)))}
-.drawer.left{right:auto;left:0;border-left:0;border-right:6px solid var(--tc,var(--desk));transform:translateX(-105%);box-shadow:20px 0 40px rgba(0,0,0,.5)}
-.drawer.left.on{transform:none}
-@media print{ .addnote{display:none} }
+.pc.mini .pnote{font-size:13px;margin-top:3px}
 </style>
 </head>
 <body>
 <div class="bar">
   <span class="brand">SportsDesk</span>
   <span class="t">Spotting board</span>
+  <span class="mu" id="mu"></span>
   <span class="status" id="status"><i></i><span id="statusTxt">Loading</span></span>
   <form id="f"><label for="team">Team</label><input id="team" maxlength="4" autocomplete="off"><label for="delay">Delay</label><input id="delay" type="number" min="0" max="120" step="1" inputmode="numeric" style="width:58px;text-transform:none" title="Seconds to hold live stats and alerts back so they match your video"><button>Apply</button></form>
   <button class="pbtn" id="print" type="button">Print</button>
@@ -277,7 +269,7 @@ async function seasonOf(id){
 
 /* ---------- state ---------- */
 const S = { ev:null, teams:{}, players:{}, live:{}, state:"pre", order:[] };
-const DR = { id:null, logs:{}, noteOpen:null, side:"home" };
+const DR = { id:null, logs:{} };
 
 async function load(){
   setStatus("", "Finding the game");
@@ -362,23 +354,19 @@ function renderShell(sum, comp){
     return `<div><b>${esc(S.teams[s].abbr)}</b> ${outs.length ? outs.map(p => `${esc(p.short)} <span class="dim">${esc(p.inj)}</span>`).join(", ") : '<span class="dim">nobody out</span>'}${dtd.length ? ` <span class="dim" title="${esc(dtd.map(p => p.short).join(", "))}">· ${dtd.length} day-to-day</span>` : ""}</div>`;
   }).join("");
   const hasL5 = (sum.lastFiveGames || []).some(t => (t.events || []).length);
+  $("#mu").innerHTML = `<b style="--tc:${A.color}"><i></i>${esc(A.abbr)}</b> at <b style="--tc:${H.color}"><i></i>${esc(H.abbr)}</b><span class="meta">${esc(when.toLocaleDateString([], { weekday:"short", month:"short", day:"numeric" }))} ${esc(when.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }))}${venue ? " · " + esc(venue) : ""}${line ? " · " + esc(line) : ""}</span>`;
   $("#app").innerHTML = `
-    <div class="match">
-      <span class="tm" style="--tc:${A.color}"><i></i><b>${esc(A.abbr)}</b>${esc(A.name)}${A.rec ? ` <span>${esc(A.rec)}</span>` : ""}</span>
-      <span class="at">at</span>
-      <span class="tm" style="--tc:${H.color}"><i></i><b>${esc(H.abbr)}</b>${esc(H.name)}${H.rec ? ` <span>${esc(H.rec)}</span>` : ""}</span>
-      <span id="clk">${esc(when.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }))}</span>
-      <span class="meta">${esc(when.toLocaleDateString([], { weekday:"short", month:"short", day:"numeric" }))}${venue ? " · " + esc(venue) : ""}${line ? " · " + esc(line) : ""}</span>
-    </div>
-    <div class="ctx">
-      <div class="box alerts"><h3>Live alerts</h3><iframe id="feed" title="Live alerts" src="${esc(feedUrl())}"></iframe></div>
-      <div class="side">
+    <div class="layout">
+      <div class="col away" id="colA"></div>
+      <aside class="desk" id="desk">
+        <div class="box alerts"><h3>Live alerts</h3><iframe id="feed" title="Live alerts" src="${esc(feedUrl())}"></iframe></div>
+        <section class="detail" id="detail" hidden aria-label="Player detail"></section>
         ${hasL5 ? `<div class="box"><h3>Last five</h3><div class="l5">${l5("away")}${l5("home")}</div></div>` : ""}
         <div class="box"><h3>Season series</h3><div class="list">${seriesTxt}</div></div>
         <div class="box"><h3>Injury report</h3><div class="list">${injuries}</div></div>
-      </div>
-    </div>
-    <div class="teams" id="teams"></div>`;
+      </aside>
+      <div class="col home" id="colH"></div>
+    </div>`;
 
 }
 
@@ -405,9 +393,7 @@ function card(p, mini){
     }
   }
   const note = store.get("p:" + p.id);
-  const noteEl = note || DR.noteOpen === p.id
-    ? `<textarea class="note" data-id="${esc(p.id)}" rows="1" placeholder="Notes on ${esc(p.short)}…">${esc(note)}</textarea>`
-    : `<button type="button" class="addnote" data-id="${esc(p.id)}">+ note</button>`;
+  const noteEl = note ? `<div class="pnote">${esc(note)}</div>` : "";
   const badges = `${SERIOUS.test(p.inj) ? `<span class="inj${injCls}">${esc(p.inj)}</span>` : ""}${l && l.onCourt ? '<span class="oncourt">On floor</span>' : ""}${l && l.starter ? '<span class="st5">Starter</span>' : ""}`;
   if (mini){
     const sl = p.season ? `${f(s.PTS)} / ${f(s.REB)} / ${f(s.AST)}` : p.season === undefined ? "…" : "–";
@@ -416,8 +402,8 @@ function card(p, mini){
     <div>
       <div class="top"><span class="name">${esc(p.name)}</span><span class="pos">${esc(p.pos)}</span>${badges}<span class="sl" title="Season points / rebounds / assists">SEASON <b>${sl}</b></span></div>
       ${nowRow.replace('class="tn"', 'class="tn sm"')}
+      ${noteEl}
     </div>
-    ${noteEl}
   </div>`;
   }
   return `<div class="pc${/out/i.test(p.inj) ? " out" : ""}${DR.id === p.id ? " sel" : ""}" data-pid="${esc(p.id)}" style="--tc:${t.color}">
@@ -427,8 +413,8 @@ function card(p, mini){
       <div class="bio">${esc(bio)}${p.college ? ` · <b>${esc(p.college)}</b>` : ""}</div>
       ${nowRow}
       <div class="ssn${l ? "" : " big"}">${seasonLine}</div>
+      ${noteEl}
     </div>
-    ${noteEl}
   </div>`;
 }
 function groups(side){
@@ -458,30 +444,18 @@ function groups(side){
   return [["Rotation by minutes (starters post at tip)", avail], [`Out tonight (${out.length})`, out, true]];
 }
 function renderTeams(){
-  const el = $("#teams"); if (!el) return;
-  const openFolds = new Set([...el.querySelectorAll("details.fold[open]")].map(d => d.parentElement.querySelector("h2").textContent));
-  // keep whatever the user is typing
-  const active = document.activeElement && document.activeElement.classList.contains("note") ? document.activeElement.dataset.id : null;
-  el.innerHTML = ["away","home"].map(side => {
+  [["away", "#colA"], ["home", "#colH"]].forEach(([side, sel]) => {
+    const el = $(sel); if (!el) return;
     const t = S.teams[side];
-    return `<div class="col" style="--tc:${t.color}"><h2>${esc(t.name)}<span>${esc(t.rec)}</span></h2>` +
+    const openFolds = new Set([...el.querySelectorAll("details.fold[open] .grp")].map(g => g.textContent.replace(/\s*\(\d+\)$/, "")));
+    el.style.setProperty("--tc", t.color);
+    el.innerHTML = `<h2>${esc(t.name)}<span>${esc(t.rec)}</span></h2>` +
       groups(side).map(([label, list, fold, cls, mini]) => { const cards = list.map(p => card(p, mini)).join(""); return !list.length ? "" : fold
         ? `<details class="fold"><summary><span class="grp">${esc(label)}</span> <span class="who">${list.map(p => esc(p.short)).join(", ")}</span></summary>${cards}</details>`
         : cls ? `<div class="grp ${cls}">${esc(label)}</div><div class="${cls}set">${cards}</div>`
-        : `<div class="grp">${esc(label)}</div>${cards}`; }).join("") + `</div>`;
-  }).join("");
-  el.querySelectorAll("details.fold").forEach(d => { if (openFolds.has(d.parentElement.querySelector("h2").textContent)) d.open = true; });
-  el.querySelectorAll(".addnote").forEach(b => b.addEventListener("click", e => {
-    e.stopPropagation(); DR.noteOpen = b.dataset.id; renderTeams();
-    const n = el.querySelector(`.note[data-id="${b.dataset.id}"]`); if (n) n.focus();
-  }));
-  el.querySelectorAll(".note").forEach(n => {
-    const fit = () => { n.style.height = "auto"; n.style.height = n.scrollHeight + "px"; };
-    fit();
-    n.addEventListener("input", () => { store.set("p:" + n.dataset.id, n.value); fit(); });
-    n.addEventListener("blur", () => { if (DR.noteOpen === n.dataset.id && !n.value.trim()){ DR.noteOpen = null; setTimeout(renderTeams, 150); } });
+        : `<div class="grp">${esc(label)}</div>${cards}`; }).join("");
+    el.querySelectorAll("details.fold").forEach(d => { if (openFolds.has(d.querySelector(".grp").textContent.replace(/\s*\(\d+\)$/, ""))) d.open = true; });
   });
-  if (active){ const n = el.querySelector(`.note[data-id="${active}"]`); if (n){ n.focus(); n.selectionStart = n.selectionEnd = n.value.length; } }
 }
 
 /* ---------- live: tonight's line next to the season line ---------- */
@@ -616,13 +590,31 @@ function seasonFromLog(log){
 const hl = s => esc(s).replace(/([+−]?\d+(?:[.\-]\d+)?%?)/g, "<b>$1</b>");
 
 function openPlayer(id){
+  const p = S.players[id]; if (!p) return;
   DR.id = id;
-  const side = S.players[id] && S.players[id].side;
-  $("#drawer").classList.toggle("left", side === "away");
-  $("#drawer").classList.add("on"); $("#drawer").scrollTop = 0; renderDrawer();
+  const t = S.teams[p.side], d = $("#detail");
+  d.style.setProperty("--tc", t.color);
+  d.innerHTML = `
+    <div class="dh"><span class="jn">${esc(p.jersey)}</span><div><div class="nm">${esc(p.name)}</div><div class="dim">${esc(t.abbr)} · ${esc(p.pos)}${p.college ? " · " + esc(p.college) : ""}</div></div><button class="x" type="button">Close ✕</button></div>
+    <textarea class="pn" rows="1" placeholder="Your notes on ${esc(p.short)}…">${esc(store.get("p:" + id))}</textarea>
+    <div id="dBody"></div>`;
+  d.hidden = false; $("#desk").classList.add("has-detail");
+  d.querySelector(".x").addEventListener("click", closePlayer);
+  const n = d.querySelector(".pn");
+  const fit = () => { n.style.height = "auto"; n.style.height = n.scrollHeight + 2 + "px"; }; fit();
+  n.addEventListener("input", () => { store.set("p:" + id, n.value); fit(); });
+  n.addEventListener("change", renderTeams);
+  document.querySelectorAll(".pc.sel").forEach(c => c.classList.remove("sel"));
+  document.querySelectorAll(`.pc[data-pid="${id}"]`).forEach(c => c.classList.add("sel"));
+  renderDrawer();
+  d.scrollIntoView({ block:"nearest" });
   logOf(id).then(() => { if (DR.id === id) renderDrawer(); });
 }
-function closePlayer(){ DR.id = null; $("#drawer").classList.remove("on"); }
+function closePlayer(){
+  DR.id = null; const d = $("#detail"); if (!d) return;
+  d.hidden = true; d.innerHTML = ""; $("#desk").classList.remove("has-detail");
+  document.querySelectorAll(".pc.sel").forEach(c => c.classList.remove("sel"));
+}
 function renderDrawer(){
   const id = DR.id, p = id && S.players[id]; if (!p) return;
   const t = S.teams[p.side], l = S.live[id], s = p.season || {}, log = DR.logs[id];
@@ -720,22 +712,19 @@ function renderDrawer(){
     if (!played && p.season) say.push(`Averaging ${s.PTS} points, ${s.REB} rebounds and ${s.AST} assists.`);
   }
 
-  $("#drawer").style.setProperty("--tc", t.color);
-  $("#drawer").innerHTML = `
-    <div class="dh"><span class="jn">${esc(p.jersey)}</span><div><div class="nm">${esc(p.name)}</div><div class="dim">${esc(t.name)} · ${esc(p.pos)}${p.college ? " · " + esc(p.college) : ""}</div></div><button class="x" type="button" aria-label="Close">×</button></div>
+  const body = $("#dBody"); if (!body) return;
+  body.innerHTML = `
     <h4>On-air lines</h4>
     ${say.length ? `<ul class="say">${say.map(x => `<li>${hl(x)}</li>`).join("")}</ul>` : '<p class="dim">Nothing yet.</p>'}
     ${tonight}${season}
-    <p class="dim foot">From ESPN's box score and play-by-play${cfg.delay ? `, on your ${cfg.delay}s delay` : ""}. Updates live while open. Esc to close.</p>`;
-  $("#drawer .x").addEventListener("click", closePlayer);
+    <p class="dim foot">From ESPN's box score and play-by-play${cfg.delay ? `, on your ${cfg.delay}s delay` : ""}. Updates live. Esc or click the card again to close.</p>`;
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape" && DR.id) closePlayer(); });
 document.addEventListener("click", e => {
   const c = e.target.closest && e.target.closest(".pc");
-  if (!c || e.target.closest("textarea,.addnote")) return;
+  if (!c) return;
   if (c.dataset.pid === DR.id) closePlayer(); else openPlayer(c.dataset.pid);
 });
 </script>
-<aside class="drawer" id="drawer" aria-label="Player detail"></aside>
 </body>
 </html>
