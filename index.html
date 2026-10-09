@@ -319,7 +319,7 @@ const DEFAULTS = {
   dates:  "",           // YYYYMMDD
   demo:   false,        // true = simulated game, sped up
   off:    "",           // comma list of alerts to switch off, e.g. off=biglead,quarter
-  handle: "",           // your channel in the top-right corner, e.g. handle=twitch.tv/sportstein
+  handle: "twitch.tv/sportstein", // channel in the top-right corner; handle= (empty) hides it
   lastplay: true,       // last-play line under the bug (lastplay=0 hides it)
   extras: true,         // timeout dots + BONUS on the bug (extras=0 hides them)
   // thresholds
@@ -347,7 +347,7 @@ const on = k => !OFF.has(k);
 const FEEDONLY = cfg.view === "feed";
 const MONITOR = cfg.view === "monitor" || FEEDONLY;
 const LAYER = (new URLSearchParams(location.search).get("layer") || "").toLowerCase();
-if (cfg.handle){ const h = document.getElementById("handle"); h.textContent = cfg.handle; h.classList.add("on"); }
+if (cfg.handle && cfg.handle !== "0"){ const h = document.getElementById("handle"); h.textContent = cfg.handle; h.classList.add("on"); }
 if (!MONITOR && (LAYER === "bug" || LAYER === "alerts")) document.body.classList.add("only-" + LAYER);
 
 const LEAGUES = {
