@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SportsDesk NFL Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="boardkit.css">
+</head>
+<body>
+<script src="boardkit.js"></script>
+<script>
+/* ==================================================================
+   NFL spotting board
+   https://sportstein.github.io/sportsdesk/nfl.html?team=DAL
+   Options: team, event, delay, poll, days (default 8), view=feed
+   ================================================================== */
+const { esc, num, last } = SD;
+const OL = /^(C|G|OT|OG|T|OL)$/, DL = /^(DE|DT|NT|DL|EDGE)$/, LB = /^(LB|ILB|OLB|MLB)$/, DB = /^(CB|S|FS|SS|DB)$/;
+const posOrder = { QB:1, RB:2, FB:3, WR:4, TE:5 };
+const comma = n => n == null || n === "" || n === "-" ? "–" : Number(String(n).replace(/,/g, "")).toLocaleString();
+
+/* per-player numbers out of the box score: row[category][LABEL] */
+function parseLive(snap){
+  const out = {};
+  for (const tp of (snap.sum.boxscore && snap.sum.boxscore.players) || []){
+    for (const cat of tp.statistics || []){
+      const labels = (cat.labels || []).map(x => String(x).toUpperCase());
+      for (const a of cat.athletes || []){
+        if (!a.athlete) continue;
+        const id = String(a.athlete.id), r = out[id] || (out[id] = {});
+        const o = r[cat.name] = {};
+        labels.forEach((l, i) => o[l] = (a.stats || [])[i]);
+      }
+    }
+  }
+  return out;
+}
+const v = (row, cat, k) => row && row[cat] ? row[cat][k] : undefined;
+const nz = x => x != null && x !== "" && x !== "0" && x !== "0/0" && x !== "0-0";
+
+function tonight(p, row){
+  const S = SD.S;
+  if (S.state === "pre") return null;
+  if (!row){
+    if (OL.test(p.pos) || /^(LS)$/.test(p.pos)) return null;
+    return { none: S.state === "post" ? "No stats" : "No stats yet" };
+  }
+  if (p.pos === "QB" && row.passing) return { items:[
+    ["C/ATT", v(row,"passing","C/ATT"), "w"], ["YDS", v(row,"passing","YDS")], ["TD", v(row,"passing","TD"), +v(row,"passing","TD") ? "up" : ""],
+    ["INT", v(row,"passing","INT"), +v(row,"passing","INT") ? "warn" : ""], ["SCK", (String(v(row,"passing","SACKS") || "").split("-")[0])],
+    ["RTG", v(row,"passing","RTG")], ["RUSH", v(row,"rushing","YDS") ?? 0] ] };
+  if (row.rushing && (p.pos === "RB" || p.pos === "FB" || !row.receiving)) return { items:[
+    ["CAR", v(row,"rushing","CAR")], ["YDS", v(row,"rushing","YDS")], ["AVG", v(row,"rushing","AVG")], ["TD", v(row,"rushing","TD"), +v(row,"rushing","TD") ? "up" : ""],
+    ["LONG", v(row,"rushing","LONG")], ["REC", v(row,"receiving","REC") ?? 0], ["REC YDS", v(row,"receiving","YDS") ?? 0, "w"] ] };
+  if (row.receiving) return { items:[
+    ["REC", v(row,"receiving","REC")], ["TGT", v(row,"receiving","TGTS")], ["YDS", v(row,"receiving","YDS")], ["AVG", v(row,"receiving","AVG")],
+    ["TD", v(row,"receiving","TD"), +v(row,"receiving","TD") ? "up" : ""], ["LONG", v(row,"receiving","LONG")], ["RUSH", v(row,"rushing","YDS") ?? 0] ] };
+  if (row.kicking) return { items:[["FG", v(row,"kicking","FG"), "w"], ["LONG", v(row,"kicking","LONG")], ["XP", v(row,"kicking","XP"), "w"], ["PTS", v(row,"kicking","PTS")]] };
+  if (row.punting) return { items:[["PUNTS", v(row,"punting","NO")], ["AVG", v(row,"punting","AVG")], ["IN 20", v(row,"punting","IN 20")], ["LONG", v(row,"punting","LONG")]] };
+  if (row.defensive) return { items:[["TKL", v(row,"defensive","TOT")], ["SACK", v(row,"defensive","SACKS")], ["TFL", v(row,"defensive","TFL")], ["PD", v(row,"defensive","PD")], ["INT", v(row,"interceptions","INT") ?? 0]] };
+  return { none:"No stats yet" };
+}
+function chipLine(p, row){
+  if (!row) return "";
+  const d = row.defensive || {}, bits = [];
+  if (nz(d.TOT)) bits.push(`${d.TOT} TKL`);
+  if (nz(d.SACKS)) bits.push(`${d.SACKS} SK`);
+  if (row.interceptions && nz(row.interceptions.INT)) bits.push(`${row.interceptions.INT} INT`);
+  if (nz(d.PD) && !bits.length) bits.push(`${d.PD} PD`);
+  if (row.kicking) bits.push(`FG ${row.kicking.FG}`);
+  if (row.punting) bits.push(`${row.punting.NO} punts`);
+  return bits.join(" · ");
+}
+/* season line from ESPN's overview (labels repeat for passing/rushing, so the second set gets _2) */
+function seasonLine(p){
+  const s = p.season;
+  if (p.season === undefined) return `<span class="lab">SEASON</span>Loading…`;
+  if (!s) return `<span class="lab">SEASON</span>No stats this season`;
+  const lab = `<span class="lab">SEASON${s.GP ? " · " + esc(s.GP) + " GP" : ""}</span>`;
+  if (p.pos === "QB") return lab + `<b>${comma(s.YDS)}</b> yds · <b>${esc(s.TD ?? "–")}</b> TD · <b>${esc(s.INT ?? "–")}</b> INT · <b>${esc(s["CMP%"] ?? "–")}</b> cmp% · <b>${esc(s.RTG ?? "–")}</b> rtg`;
+  if (s.REC !== undefined) return lab + `<b>${esc(s.REC)}</b> rec · <b>${comma(s.YDS)}</b> yds · <b>${esc(s.TD ?? "–")}</b> TD${s.CAR && s.CAR !== "-" && +s.CAR > 5 ? ` · <b>${esc(s.CAR)}</b> car <b>${comma(s.YDS_2)}</b> rush yds` : ""}`;
+  if (s.CAR !== undefined) return lab + `<b>${esc(s.CAR)}</b> car · <b>${comma(s.YDS)}</b> yds · <b>${esc(s.AVG ?? "–")}</b> ypc · <b>${esc(s.TD ?? "–")}</b> TD`;
+  if (s.TOT !== undefined) return lab + `<b>${esc(s.TOT)}</b> tkl · <b>${esc(s.SACK ?? "–")}</b> sacks · <b>${esc(s.INT ?? "–")}</b> INT`;
+  const keys = Object.keys(s).filter(k => !k.startsWith("_")).slice(0, 5);
+  return lab + keys.map(k => `<b>${esc(s[k])}</b> ${esc(k.toLowerCase())}`).join(" · ");
+}
+function seasonMini(p){
+  const s = p.season;
+  if (p.season === undefined) return "…";
+  if (!s) return "";
+  if (p.pos === "QB") return `SEASON <b>${comma(s.YDS)} yds · ${esc(s.TD)} TD</b>`;
+  if (s.REC !== undefined) return `SEASON <b>${esc(s.REC)} rec · ${comma(s.YDS)} yds</b>`;
+  if (s.CAR !== undefined) return `SEASON <b>${comma(s.YDS)} yds · ${esc(s.TD)} TD</b>`;
+  return "";
+}
+function mainYds(p){
+  const s = p.season || {}, row = SD.S.live[p.id];
+  const tn = row ? (+v(row,"passing","YDS") || 0) + (+v(row,"rushing","YDS") || 0) + (+v(row,"receiving","YDS") || 0) : 0;
+  const se = +String(s.YDS || 0).replace(/,/g, "") || 0;
+  return tn * 1000 + se;
+}
+function groups(side){
+  const ps = SD.S.teams[side].players.filter(p => !p.ir && !p.ps);
+  const by = re => ps.filter(p => re.test(p.pos)).sort((a, b) => mainYds(b) - mainYds(a));
+  const qb = by(/^QB$/), rb = by(/^(RB|FB)$/), wr = by(/^WR$/), te = by(/^TE$/);
+  const out = [];
+  const split = (label, list, n) => { if (list.length){ out.push({ label, list:list.slice(0, n) }); if (list.length > n) out.push({ label:`${label}, depth`, list:list.slice(n), mini:true }); } };
+  split("Quarterbacks", qb, 1); split("Running backs", rb, 2); split("Receivers", wr, 3); split("Tight ends", te, 1);
+  out.push({ label:"Offensive line", list:ps.filter(p => OL.test(p.pos)), chips:true });
+  out.push({ label:"Defensive line", list:ps.filter(p => DL.test(p.pos)), chips:true });
+  out.push({ label:"Linebackers", list:ps.filter(p => LB.test(p.pos)), chips:true });
+  out.push({ label:"Secondary", list:ps.filter(p => DB.test(p.pos)), chips:true });
+  out.push({ label:"Specialists", list:ps.filter(p => /^(PK|K|P|LS)$/.test(p.pos)), chips:true });
+  const used = new Set(out.flatMap(g => g.list));
+  const rest = ps.filter(p => !used.has(p));
+  if (rest.length) out.push({ label:"Other", list:rest, chips:true });
+  const ir = SD.S.teams[side].players.filter(p => p.ir);
+  if (ir.length) out.push({ label:`Injured reserve / out (${ir.length})`, list:ir, fold:true, chips:true });
+  return out;
+}
+
+/* down, distance and possession come from the scoreboard's situation block */
+async function extra(sum){
+  const sb = await SD.J(`${SD.BASE}/scoreboard`);
+  const ev = (sb.events || []).find(e => String(e.id) === String(SD.S.ev));
+  return ev ? { sit: ev.competitions[0].situation || null } : null;
+}
+function sideOfTeam(id){ const S = SD.S; return String(id) === S.teams.away.id ? "away" : String(id) === S.teams.home.id ? "home" : null; }
+function qLabel(n){ return n <= 4 ? `Q${n}` : n === 5 ? "OT" : `${n - 4}OT`; }
+function clock(snap){
+  const st = snap.sum.header.competitions[0].status, ty = st.type || {};
+  if (ty.state === "post") return { top:"Final", bottom: st.period > 4 ? "OT" : "" };
+  if (/HALFTIME/.test(ty.name || "")) return { top:"Half", bottom:"" };
+  if (/END_PERIOD/.test(ty.name || "")) return { top:"End", bottom:qLabel(st.period) };
+  return { top: st.displayClock, bottom: qLabel(st.period) };
+}
+function possession(snap){ const s = snap.extra && snap.extra.sit; return s && s.possession ? sideOfTeam(s.possession) : null; }
+function situation(snap){
+  const s = snap.extra && snap.extra.sit; if (!s) return "";
+  const S = SD.S, bits = [];
+  if (s.shortDownDistanceText) bits.push(`<b>${esc(s.shortDownDistanceText)}</b>`);
+  if (s.possessionText) bits.push(`at ${esc(s.possessionText)}`);
+  if (s.isRedZone) bits.push(`<span class="rz">RED ZONE</span>`);
+  const d = snap.sum.drives && snap.sum.drives.current;
+  if (d && d.description) bits.push(`<span class="dim">Drive: ${esc(d.description)}</span>`);
+  if (s.lastPlay && s.lastPlay.text) bits.push(`<span class="dim" style="flex-basis:100%">${esc(String(s.lastPlay.text).trim())}</span>`);
+  return bits.join(" ");
+}
+function pulse(snap){
+  const s = snap.extra && snap.extra.sit, S = SD.S, bits = [];
+  if (s && s.awayTimeouts != null && S.state === "in") bits.push(`<span class="grpx">Timeouts</span><span>${esc(S.teams.away.abbr)} ${"●".repeat(s.awayTimeouts)}${"○".repeat(Math.max(0, 3 - s.awayTimeouts))}</span><span>${esc(S.teams.home.abbr)} ${"●".repeat(s.homeTimeouts)}${"○".repeat(Math.max(0, 3 - s.homeTimeouts))}</span>`);
+  const wp = (snap.sum.winprobability || []).slice(-1)[0];
+  if (wp && S.state === "in"){ const h = Math.round(+wp.homeWinPercentage * 100); bits.push(`<span class="grpx">Win prob</span><span>${esc(h >= 50 ? S.teams.home.abbr : S.teams.away.abbr)} ${Math.max(h, 100 - h)}%</span>`); }
+  return bits.join("");
+}
+/* feed: every scoring play, turnover and 20+ yard play, oldest first */
+function feed(snap){
+  const S = SD.S, drv = snap.sum.drives || {}, items = [];
+  const drives = [...(drv.previous || [])]; if (drv.current && !drives.some(d => d.id === drv.current.id)) drives.push(drv.current);
+  for (const d of drives){
+    for (const p of d.plays || []){
+      const ty = String((p.type && p.type.text) || ""), txt = String(p.text || "").trim(), side = sideOfTeam((p.start && p.start.team && p.start.team.id) || (d.team && d.team.id));
+      const per = (p.period && p.period.number) || 1, stamp = `${qLabel(per)} ${(p.clock && p.clock.displayValue) || ""}`;
+      const score = Number.isFinite(+p.awayScore) ? `${S.teams.away.abbr} ${p.awayScore}-${p.homeScore} ${S.teams.home.abbr}` : "";
+      if (p.scoringPlay){
+        const scorer = sideOfTeam(p.team && p.team.id) || side;
+        items.push({ key:p.id, side:scorer, big:true, kicker:`${ty || "Score"} · ${score}`, head:txt, stamp });
+      } else if (/interception|fumble recovery \(opponent\)|safety|blocked|muffed/i.test(ty)){
+        items.push({ key:p.id, side, big:true, kicker:`Turnover · ${ty}`, head:txt, stamp });
+      } else if ((+p.statYardage || 0) >= 20 && /pass|rush|run/i.test(ty)){
+        items.push({ key:p.id, side, kicker:`Big play · ${p.statYardage} yards`, head:txt, stamp });
+      } else if (p.start && p.start.down === 4 && /pass|rush|run/i.test(ty)){
+        items.push({ key:p.id, side, kicker:"4th down try", head:txt, stamp });
+      }
+    }
+    if (d.result && d !== drv.current && !d.isScore && !/^(TD|FG)$/i.test(d.result)){
+      const side = sideOfTeam(d.team && d.team.id);
+      items.push({ key:"d" + d.id, side, kicker:`${S.teams[side] ? S.teams[side].abbr : ""} drive · ${d.displayResult || d.result}`, head:d.description || "", stamp:"" });
+    }
+  }
+  return items;
+}
+function teamRows(snap){
+  const T = {}; for (const t of (snap.sum.boxscore && snap.sum.boxscore.teams) || []){ const sd = sideOfTeam(t.team.id); const o = T[sd] = {}; (t.statistics || []).forEach(x => o[x.name] = x.displayValue); }
+  if (!T.away || !T.home) return null;
+  const n = x => parseFloat(String(x || "").replace(/,/g, "")) || 0;
+  const eff = x => { const m = String(x || "").match(/(\d+)-(\d+)/); return m && +m[2] ? +m[1] / +m[2] : null; };
+  const row = (k, key, dir = 1, f = n) => [k, T.away[key], T.home[key], f(T.away[key]), f(T.home[key]), dir];
+  return [row("Total yards","totalYards"), row("Passing","netPassingYards"), row("Rushing","rushingYards"), row("Yards/play","yardsPerPlay"), row("1st downs","firstDowns"),
+    row("3rd down","thirdDownEff",1,eff), row("4th down","fourthDownEff",1,eff), row("Red zone","redZoneAttempts",1,eff), row("Turnovers","turnovers",-1),
+    row("Penalties","totalPenaltiesYards",-1,x => n(String(x).split("-")[1])), row("Sacks allowed","sacksYardsLost",-1,x => n(String(x).split("-")[0])),
+    ["Possession", T.away.possessionTime, T.home.possessionTime, null, null, 0]].filter(r => r[1] !== undefined || r[2] !== undefined);
+}
+function context(sum){
+  const S = SD.S;
+  const inj = ["away","home"].map(s => {
+    const outs = S.teams[s].players.filter(p => SD.SERIOUS.test(p.inj || "") && !p.ir);
+    return `<div><b>${esc(S.teams[s].abbr)}</b> ${outs.length ? outs.map(p => `${esc(p.short)} <span class="dim">${esc(p.pos)}, ${esc(p.inj)}</span>`).join(", ") : '<span class="dim">nobody listed out</span>'}</div>`;
+  }).join("");
+  return [{ title:"Injury report", html:inj }];
+}
+
+/* on-air lines */
+function detail(p, row, snap){
+  const S = SD.S, say = [], s = p.season || {};
+  const log = SD.once("log:" + p.id, () => SD.gamelog(p.id));
+  const g = log && log !== "pending" ? log.games : null;
+  let tiles = "";
+  if (row && row.passing){
+    const ca = String(row.passing["C/ATT"] || "0/0").split("/");
+    say.push(`${ca[0]} of ${ca[1]} for ${row.passing.YDS} yards, ${row.passing.TD} TD, ${row.passing.INT} INT.`);
+    if (+row.passing.RTG) say.push(`Passer rating ${row.passing.RTG}.`);
+    if (row.rushing && +row.rushing.YDS >= 15) say.push(`Also ${row.rushing.CAR} carries for ${row.rushing.YDS} yards on the ground.`);
+    tiles = SD.tile(row.passing.YDS, "Pass yards") + SD.tile(row.passing.AVG, "Yards per attempt") + SD.tile(row.passing.RTG, "Rating");
+  }
+  if (row && row.rushing && p.pos !== "QB"){
+    say.push(`${row.rushing.CAR} carries for ${row.rushing.YDS} yards (${row.rushing.AVG} a carry)${+row.rushing.TD ? `, ${row.rushing.TD} TD` : ""}. Long of ${row.rushing.LONG}.`);
+    tiles += SD.tile(row.rushing.YDS, "Rush yards") + SD.tile(row.rushing.AVG, "Per carry");
+  }
+  if (row && row.receiving){
+    say.push(`${row.receiving.REC} catch${+row.receiving.REC === 1 ? "" : "es"} on ${row.receiving.TGTS} target${+row.receiving.TGTS === 1 ? "" : "s"} for ${row.receiving.YDS} yards${+row.receiving.TD ? `, ${row.receiving.TD} TD` : ""}. Long of ${row.receiving.LONG}.`);
+    tiles += SD.tile(row.receiving.YDS, "Rec yards") + SD.tile(row.receiving.TGTS, "Targets");
+  }
+  if (row && row.defensive){
+    const d = row.defensive, b = [`${d.TOT} tackle${+d.TOT === 1 ? "" : "s"}`];
+    if (nz(d.SACKS)) b.push(`${d.SACKS} sack${+d.SACKS === 1 ? "" : "s"}`); if (nz(d.TFL)) b.push(`${d.TFL} for loss`); if (nz(d["QB HTS"])) b.push(`${d["QB HTS"]} QB hits`); if (nz(d.PD)) b.push(`${d.PD} pass breakups`);
+    say.push(b.join(", ") + ".");
+  }
+  if (row && row.interceptions && nz(row.interceptions.INT)) say.push(`${row.interceptions.INT} interception${+row.interceptions.INT === 1 ? "" : "s"} for ${row.interceptions.YDS} return yards.`);
+  if (row && row.kicking) say.push(`${row.kicking.FG} on field goals, long of ${row.kicking.LONG}. ${row.kicking.XP} on extra points.`);
+  if (row && row.punting) say.push(`${row.punting.NO} punts, ${row.punting.AVG} average, ${row.punting["IN 20"]} inside the 20.`);
+  // season context
+  if (p.season){
+    if (p.pos === "QB" && s.YDS) say.push(`Season: ${comma(s.YDS)} yards, ${s.TD} TD, ${s.INT} INT${s["CMP%"] ? `, ${s["CMP%"]}% completions` : ""}.`);
+    else if (s.REC !== undefined && s.REC !== "-") say.push(`Season: ${s.REC} catches, ${comma(s.YDS)} yards, ${s.TD} TD.`);
+    else if (s.CAR !== undefined && s.CAR !== "-") say.push(`Season: ${s.CAR} carries, ${comma(s.YDS)} yards, ${s.TD} TD.`);
+    else if (s.TOT !== undefined && s.TOT !== "-") say.push(`Season: ${s.TOT} tackles, ${s.SACK} sacks, ${s.INT} INT.`);
+  }
+  if (g && g.length){
+    const key = p.pos === "QB" ? "YDS" : g[0].REC !== undefined ? "YDS" : g[0].CAR !== undefined ? "YDS" : g[0].TOT !== undefined ? "TOT" : null;
+    if (key){
+      const best = g.reduce((b, x) => (+String(x[key]).replace(/,/g, "") || 0) > (+String(b[key]).replace(/,/g, "") || 0) ? x : b, g[0]);
+      say.push(`Season best: ${best[key]} ${key === "TOT" ? "tackles" : "yards"} ${best.opp}.`);
+      if (row){
+        const now = key === "TOT" ? +v(row,"defensive","TOT") : p.pos === "QB" ? +v(row,"passing","YDS") : +(v(row,"receiving","YDS") ?? v(row,"rushing","YDS"));
+        const hi = +String(best[key]).replace(/,/g, "") || 0;
+        if (now > hi && now > 0) say.push(`That's a new season high.`);
+      }
+    }
+  }
+  if (p.inj && SD.SERIOUS.test(p.inj)) say.push(`Listed ${p.inj} on the injury report.`);
+  if (p.college) say.push(`Out of ${p.college}${p.exp != null ? `, ${p.exp === 0 ? "a rookie" : `in his ${SD.ord(p.exp + 1)} season`}` : ""}.`);
+  let logHtml = "";
+  if (log === "pending") logHtml = `<h4>Last games</h4><p class="dim">Loading his game log…</p>`;
+  else if (g && g.length){
+    const cols = (log.labels || []).filter((l, i, a) => a.indexOf(l) === i).slice(0, 6);
+    logHtml = `<h4>Last ${Math.min(5, g.length)} games</h4><table><tr><th></th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${g.slice(0, 5).map(x => `<tr><td>${esc(x.date ? new Date(x.date).toLocaleDateString([], { month:"short", day:"numeric" }) : "")} ${esc(x.opp)} <span class="dim">${esc(x.res)}</span></td>${cols.map(c => `<td>${esc(x[c])}</td>`).join("")}</tr>`).join("")}</table>`;
+  }
+  return { say, html:(tiles ? `<h4>Tonight</h4><div class="tiles">${tiles}</div>` : "") + logHtml };
+}
+
+SD.start({
+  key:"nfl", sport:"football", league:"nfl", title:"NFL board", defaultTeam:"DAL", days:8,
+  codesHint:"ESPN uses NE, NYG, NYJ, KC, SF, GB, LAR, LAC, LV, NO, TB, JAX, WSH",
+  serious:/out|question|doubt|suspend|injured reserve|^ir$/i,
+  async loadPlayers(side, team){
+    const r = await SD.J(`${SD.BASE}/teams/${team.id}/roster`);
+    const out = [];
+    for (const gr of r.athletes || []){
+      const grp = String(gr.position || "");
+      if (/practice/i.test(grp)) continue;
+      for (const a of gr.items || []){
+        const inj = a.injuries && a.injuries[0] ? (a.injuries[0].status || "") : "";
+        out.push({ id:String(a.id), name:a.displayName, short:a.shortName || a.displayName, jersey:a.jersey || "", pos:(a.position && a.position.abbreviation) || "",
+          college:(a.college && (a.college.shortName || a.college.name)) || "", exp:a.experience ? a.experience.years : null, ht:a.displayHeight || "", wt:a.displayWeight || "", age:a.age || "",
+          inj: /injured/i.test(grp) && !inj ? "Injured reserve" : inj, ir:/injured|suspend/i.test(grp), season: OL.test((a.position && a.position.abbreviation) || "") || /^LS$/.test((a.position && a.position.abbreviation) || "") ? null : undefined });
+      }
+    }
+    return out;
+  },
+  seasonOf: p => SD.overview(p.id, /regular/i),
+  bio: p => esc([p.ht, p.wt, p.age ? p.age + " yrs" : "", p.exp != null ? (p.exp === 0 ? "rookie" : `${p.exp} yr${p.exp === 1 ? "" : "s"} pro`) : ""].filter(Boolean).join(" · ")) + (p.college ? ` · <b>${esc(p.college)}</b>` : ""),
+  extra, parseLive, tonight, chipLine, seasonLine, seasonMini, groups, clock, possession, situation, pulse, feed, teamRows, context, detail,
+  teamFoot: snap => { const t = (snap.sum.boxscore && snap.sum.boxscore.teams) || []; const td = t.map(x => (x.statistics || []).find(s => s.name === "totalDrives")); return td.every(Boolean) ? `${SD.S.teams.away.abbr} ${td[0].displayValue} drives · ${SD.S.teams.home.abbr} ${td[1].displayValue} drives` : ""; }
+});
+</script>
+</body>
+</html>
