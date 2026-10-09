@@ -81,6 +81,10 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .pc .inj{font-weight:700;font-size:13px;background:#7a2626;padding:1px 6px}
 .pc .inj.q{background:#7a5a10}
 .pc .oncourt{font-weight:700;font-size:13px;background:#1f6b40;padding:1px 6px}
+.pc .st5{font-weight:700;font-size:12px;color:var(--dim);border:1px solid var(--line);padding:0 5px}
+.grp.floor{color:#7fe0a6;display:flex;align-items:center;gap:7px}
+.grp.floor::before{content:"";width:9px;height:9px;border-radius:50%;background:#2fbf6a;box-shadow:0 0 0 4px rgba(47,191,106,.2)}
+.floorset{border:2px solid #1f6b40;padding:5px 5px 0;margin-bottom:6px;background:rgba(31,107,64,.08)}
 .pc .bio{color:var(--dim);font-weight:600;font-size:14px}
 .pc .bio b{color:var(--chalk);font-weight:600}
 /* tonight = the hero line; season = small context underneath */
@@ -375,7 +379,7 @@ function card(p){
   return `<div class="pc${/out/i.test(p.inj) ? " out" : ""}${DR.id === p.id ? " sel" : ""}" data-pid="${esc(p.id)}" style="--tc:${t.color}">
     <div class="jn">${esc(p.jersey)}</div>
     <div>
-      <div class="top"><span class="name">${esc(p.name)}</span><span class="pos">${esc(p.pos)}</span>${p.inj ? `<span class="inj${injCls}">${esc(p.inj)}</span>` : ""}${l && l.onCourt ? '<span class="oncourt">On floor</span>' : ""}</div>
+      <div class="top"><span class="name">${esc(p.name)}</span><span class="pos">${esc(p.pos)}</span>${p.inj ? `<span class="inj${injCls}">${esc(p.inj)}</span>` : ""}${l && l.onCourt ? '<span class="oncourt">On floor</span>' : ""}${l && l.starter ? '<span class="st5">Starter</span>' : ""}</div>
       <div class="bio">${esc(bio)}${p.college ? ` · <b>${esc(p.college)}</b>` : ""}</div>
       ${nowRow}
       <div class="ssn${l ? "" : " big"}">${seasonLine}</div>
@@ -392,8 +396,16 @@ function groups(side){
     if (starters.length){
       // active = in tonight's box score and not marked inactive; everyone else folds away
       const active = p => S.live[p.id] && !S.live[p.id].inactive;
-      const bench = ps.filter(p => !starters.includes(p) && active(p)).sort(byMin);
       const inactive = ps.filter(p => !starters.includes(p) && !active(p)).sort(byMin);
+      // during play: the five on the floor up top, everyone else who's dressed below
+      const floor = ps.filter(p => S.live[p.id] && S.live[p.id].onCourt);
+      if (floor.length === 5){
+        const order = p => starters.includes(p) ? 0 : 1;
+        floor.sort((a, b) => order(a) - order(b) || byMin(a, b));
+        const rest = ps.filter(p => !floor.includes(p) && active(p)).sort(byMin);
+        return [["On the floor", floor, false, "floor"], ["Bench", rest], [`Inactive (${inactive.length})`, inactive, true]];
+      }
+      const bench = ps.filter(p => !starters.includes(p) && active(p)).sort(byMin);
       return [["Starters", starters], ["Bench", bench], [`Inactive (${inactive.length})`, inactive, true]];
     }
   }
@@ -409,8 +421,9 @@ function renderTeams(){
   el.innerHTML = ["away","home"].map(side => {
     const t = S.teams[side];
     return `<div class="col" style="--tc:${t.color}"><h2>${esc(t.name)}<span>${esc(t.rec)}</span></h2>` +
-      groups(side).map(([label, list, fold]) => !list.length ? "" : fold
+      groups(side).map(([label, list, fold, cls]) => !list.length ? "" : fold
         ? `<details class="fold"><summary><span class="grp">${esc(label)}</span> <span class="who">${list.map(p => esc(p.short)).join(", ")}</span></summary>${list.map(card).join("")}</details>`
+        : cls ? `<div class="grp ${cls}">${esc(label)}</div><div class="${cls}set">` + list.map(card).join("") + `</div>`
         : `<div class="grp">${esc(label)}</div>` + list.map(card).join("")).join("") + `</div>`;
   }).join("");
   el.querySelectorAll("details.fold").forEach(d => { if (openFolds.has(d.parentElement.querySelector("h2").textContent)) d.open = true; });
