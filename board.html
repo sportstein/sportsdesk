@@ -31,6 +31,7 @@ button,input,textarea{font:inherit;color:inherit}
 .bar input{width:64px;background:var(--slate);border:1px solid var(--line);font-weight:700;padding:4px 8px;text-transform:uppercase}
 .bar button,.pbtn{background:var(--desk);border:0;font-weight:700;padding:5px 12px;cursor:pointer}
 .pbtn{background:var(--slate2)}
+.pbtn + .pbtn{margin-left:-6px}
 
 /* matchup line lives in the top bar */
 .mu{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--dim);min-width:0;flex:1 1 auto}
@@ -198,6 +199,9 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .tb td.win{color:var(--up)}
 .tbf{color:var(--dim);font-weight:600;font-size:12px;margin-top:5px}
 @media print{ .pulse,.teambox{display:none} }
+.ssn.ly{margin-top:3px}
+.ssn.ly .lab{background:transparent;border:1px solid var(--desk);color:#8fb4e6}
+.ssn .gp{color:var(--dim);font-weight:600}
 </style>
 </head>
 <body>
@@ -207,6 +211,7 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
   <span class="mu" id="mu"></span>
   <span class="status" id="status"><i></i><span id="statusTxt">Loading</span></span>
   <form id="f"><label for="team">Team</label><input id="team" maxlength="4" autocomplete="off"><label for="delay">Delay</label><input id="delay" type="number" min="0" max="120" step="1" inputmode="numeric" style="width:58px;text-transform:none" title="Seconds to hold live stats and alerts back so they match your video"><button>Apply</button></form>
+  <button class="pbtn" id="pop" type="button" title="Open the score and alerts in a small window you can park next to OBS">Pop-out alerts</button>
   <button class="pbtn" id="print" type="button">Print</button>
 </div>
 <div class="msg" id="msg"></div>
@@ -242,6 +247,10 @@ $("#f").addEventListener("submit", e => {
   location.search = P.toString();
 });
 $("#print").addEventListener("click", () => window.print());
+$("#pop").addEventListener("click", () => {
+  if (!S.ev) return;
+  window.open(feedUrl(), "sdalerts", "popup=yes,width=440,height=780");
+});
 
 const store = {
   get(k){ try{ return localStorage.getItem("sdboard:" + k) || ""; }catch(e){ return ""; } },
@@ -340,6 +349,11 @@ async function load(){
   pool(all, 6, p => seasonOf(p.id)).then(avgs => {
     all.forEach((p, i) => p.season = avgs[i] || null);
     renderTeams(); if (DR.id) renderDrawer();
+    const early = all.filter(needsLast);
+    if (early.length) pool(early, 6, lastOf).then(ls => {
+      early.forEach((p, i) => p.last = ls[i]);
+      renderTeams(); if (DR.id) renderDrawer();
+    });
   });
 }
 
@@ -406,6 +420,7 @@ function card(p, mini){
   const seasonLine = p.season === undefined ? `<span class="lab">SEASON</span>Loading…` : p.season
     ? `<span class="lab">SEASON${s.GP ? ` · ${esc(s.GP)} GP` : ""}</span><b>${f(s.PTS)}</b> ppg · <b>${f(s.REB)}</b> rpg · <b>${f(s.AST)}</b> apg · <b>${f(s["FG%"])}</b> FG% · <b>${f(s["3P%"])}</b> 3P% · <b>${f(s.MIN)}</b> min`
     : `<span class="lab">SEASON</span>No NBA stats yet`;
+  const lastLine = p.last ? `<div class="ssn ly"><span class="lab">${lastLabel}</span><b>${p.last.PTS}</b> ppg · <b>${p.last.REB}</b> rpg · <b>${p.last.AST}</b> apg <span class="gp">(${p.last.gp} games)</span></div>` : "";
   let nowRow = "";
   if (l){
     const played = l.MIN != null && l.MIN !== "" && l.MIN !== "0" && l.MIN !== "--";
@@ -425,7 +440,7 @@ function card(p, mini){
     return `<div class="pc mini${/out/i.test(p.inj) ? " out" : ""}${DR.id === p.id ? " sel" : ""}" data-pid="${esc(p.id)}" style="--tc:${t.color}">
     <div class="jn">${esc(p.jersey)}</div>
     <div>
-      <div class="top"><span class="name">${esc(p.name)}</span><span class="pos">${esc(p.pos)}</span>${badges}<span class="sl" title="Season points / rebounds / assists">SEASON <b>${sl}</b></span></div>
+      <div class="top"><span class="name">${esc(p.name)}</span><span class="pos">${esc(p.pos)}</span>${badges}<span class="sl" title="Season points / rebounds / assists">SEASON${s.GP && +s.GP < 10 ? ` (${esc(s.GP)} GP)` : ""} <b>${sl}</b>${p.last ? ` · ${lastLabel} <b>${p.last.PTS} / ${p.last.REB} / ${p.last.AST}</b>` : ""}</span></div>
       ${nowRow.replace('class="tn"', 'class="tn sm"')}
       ${noteEl}
     </div>
@@ -438,6 +453,7 @@ function card(p, mini){
       <div class="bio">${esc(bio)}${p.college ? ` · <b>${esc(p.college)}</b>` : ""}</div>
       ${nowRow}
       <div class="ssn${l ? "" : " big"}">${seasonLine}</div>
+      ${lastLine}
       ${noteEl}
     </div>
   </div>`;
@@ -576,29 +592,41 @@ function playerPlays(pid, name){
   }
   return { shots, q, ap };
 }
+function parseLog(d){
+  const labels = (d.labels || []).map(x => String(x).toUpperCase());
+  const reg = (d.seasonTypes || []).filter(t => /regular/i.test(t.displayName || ""));
+  const seen = new Map();
+  const walk = o => { if (!o || typeof o !== "object") return;
+    if (o.eventId && Array.isArray(o.stats) && !seen.has(String(o.eventId)) && String(o.eventId) !== String(S.ev)) seen.set(String(o.eventId), o.stats);
+    for (const k in o) if (typeof o[k] === "object") walk(o[k]); };
+  reg.forEach(walk);
+  if (!seen.size) return null;
+  const games = [...seen].map(([eid, st]) => {
+    const g = {}; labels.forEach((l, i) => g[l] = st[i]);
+    const m = (d.events || {})[eid] || {};
+    g.date = m.gameDate; g.opp = `${m.atVs || ""} ${(m.opponent && m.opponent.abbreviation) || ""}`.trim(); g.res = m.gameResult || "";
+    return g;
+  }).sort((a, b) => new Date(b.date) - new Date(a.date));
+  return { games, label: (reg[0] && reg[0].displayName) || "Regular season" };
+}
+const LAST_SEASON = (() => { const n = new Date(); return n.getMonth() >= 8 ? n.getFullYear() : n.getFullYear() - 1; })();
+const lastLabel = `${LAST_SEASON - 1}-${String(LAST_SEASON).slice(2)}`;
+// early in a season the sample is tiny, so pull last season's line until a player has ~10 games
+const needsLast = p => p.season ? (+p.season.GP || 0) < 10 : (p.season === null && p.exp > 0);
+async function lastOf(p){
+  try{
+    const r = parseLog(await J(`${ATH}/${p.id}/gamelog?season=${LAST_SEASON}`));
+    if (!r || !r.games.length) return null;
+    const g = r.games, avg = k => g.reduce((a, x) => a + (parseFloat(x[k]) || 0), 0) / g.length;
+    return { gp:g.length, PTS:avg("PTS").toFixed(1), REB:avg("REB").toFixed(1), AST:avg("AST").toFixed(1) };
+  }catch(e){ return null; }
+}
 async function logOf(id){
   if (DR.logs[id] !== undefined) return DR.logs[id];
   DR.logs[id] = "pending";
-  const parse = d => {
-    const labels = (d.labels || []).map(x => String(x).toUpperCase());
-    const reg = (d.seasonTypes || []).filter(t => /regular/i.test(t.displayName || ""));
-    const seen = new Map();
-    const walk = o => { if (!o || typeof o !== "object") return;
-      if (o.eventId && Array.isArray(o.stats) && !seen.has(String(o.eventId)) && String(o.eventId) !== String(S.ev)) seen.set(String(o.eventId), o.stats);
-      for (const k in o) if (typeof o[k] === "object") walk(o[k]); };
-    reg.forEach(walk);
-    if (!seen.size) return null;
-    const games = [...seen].map(([eid, st]) => {
-      const g = {}; labels.forEach((l, i) => g[l] = st[i]);
-      const m = (d.events || {})[eid] || {};
-      g.date = m.gameDate; g.opp = `${m.atVs || ""} ${(m.opponent && m.opponent.abbreviation) || ""}`.trim(); g.res = m.gameResult || "";
-      return g;
-    }).sort((a, b) => new Date(b.date) - new Date(a.date));
-    return { games, label: (reg[0] && reg[0].displayName) || "Regular season" };
-  };
   try{
-    let r = parse(await J(`${ATH}/${id}/gamelog`));
-    if (!r){ const now = new Date(); r = parse(await J(`${ATH}/${id}/gamelog?season=${now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1}`)); }
+    let r = parseLog(await J(`${ATH}/${id}/gamelog`));
+    if (!r){ const now = new Date(); r = parseLog(await J(`${ATH}/${id}/gamelog?season=${now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1}`)); }
     DR.logs[id] = r;
   }catch(e){ DR.logs[id] = null; }
   return DR.logs[id];
@@ -678,9 +706,10 @@ function renderDrawer(){
     if (fgMade.length >= 3) say.push(unast >= fgMade.length / 2 ? `${unast} of his ${fgMade.length} field goals unassisted.` : `${fgMade.length - unast} of his ${fgMade.length} field goals assisted.`);
     if (ap.n >= 3) say.push(`His ${ap.n} assists have created ${ap.pts} points.`);
     if (pts >= 10 && teamPts) say.push(`${pts} of ${t.abbr}'s ${teamPts} points (${Math.round(100 * pts / teamPts)}%).`);
-    const avg = num(s.PTS);
-    if (avg && pts >= avg && pts >= 8) say.push(`${post ? "Topped" : "Already past"} his season average of ${avg} points.`);
-    const ravg = num(s.REB); if (ravg && reb >= ravg && reb >= 6) say.push(`${reb} rebounds, season average ${ravg}.`);
+    const useLast = p.last && needsLast(p), base = useLast ? p.last : s, which = useLast ? `his ${lastLabel} average` : "his season average";
+    const avg = num(base.PTS);
+    if (avg && pts >= avg && pts >= 8) say.push(`${post ? "Topped" : "Already past"} ${which} of ${avg} points.`);
+    const ravg = num(base.REB); if (ravg && reb >= ravg && reb >= 6) say.push(`${reb} rebounds, ${useLast ? lastLabel : "season"} average ${ravg}.`);
     if (sea && sea.hiP){ const hi = parseFloat(sea.hiP.PTS) || 0;
       if (pts > hi && pts >= 10) say.push(`Season high: previous best was ${hi}${sea.hiP.opp ? ` ${sea.hiP.opp}` : ""}.`);
       else if (pts >= 10 && hi - pts <= 6) say.push(`${hi - pts} away from his season high of ${hi}.`); }
@@ -715,6 +744,7 @@ function renderDrawer(){
   if (sea){
     if (!played){
       say.push(`Averaging ${s.PTS ?? r1(sea.ppg)} points${s.REB ? `, ${s.REB} rebounds` : ""}${s.AST ? ` and ${s.AST} assists` : ""}.`);
+      if (p.last && needsLast(p)) say.push(`${lastLabel}: ${p.last.PTS} points, ${p.last.REB} rebounds, ${p.last.AST} assists in ${p.last.gp} games.`);
       say.push(`Last ${sea.l5.length}: ${r1(sea.l5P)} points, ${r1(sea.l5R)} rebounds, ${r1(sea.l5A)} assists.`);
       if (sea.hiP) say.push(`Season high ${sea.hiP.PTS} points${sea.hiP.opp ? ` ${sea.hiP.opp}` : ""}.`);
       if (sea.ts != null) say.push(`${r0(sea.ts)}% true shooting on the season.`);
