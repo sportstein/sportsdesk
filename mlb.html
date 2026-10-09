@@ -151,7 +151,7 @@ function clock(snap){
   return { top: ty.shortDetail || "", bottom: sit && sit.outs != null && /^(top|bot)/i.test(ty.shortDetail || "") ? `${sit.outs} out${sit.outs === 1 ? "" : "s"}` : "" };
 }
 function possession(snap){ const i = inningOf(snap); if (SD.S.state !== "in") return null; return /^bot/i.test(i.detail) ? "home" : /^top/i.test(i.detail) ? "away" : null; }
-function nameOf(x){ return x && x.athlete ? (x.athlete.shortName || x.athlete.displayName) : ""; }
+function nameOf(x){ if (!x) return ""; if (x.athlete) return x.athlete.shortName || x.athlete.displayName; const p = SD.S.players[idOf(x)]; return p ? p.short : ""; }
 function situation(snap){
   const s = sitOf(snap); if (!s) return "";
   const i = inningOf(snap); if (!/^(top|bot)/i.test(i.detail)) return s.lastPlay && s.lastPlay.text ? `<span class="dim">${esc(s.lastPlay.text)}</span>` : "";
@@ -159,6 +159,8 @@ function situation(snap){
   const bits = [`<b>${s.balls ?? 0}-${s.strikes ?? 0}</b>`, `<span>${s.outs ?? 0} out${s.outs === 1 ? "" : "s"}</span>`,
     `<span class="dia" title="Runners"><i></i><i class="${on("onSecond")}"></i><i></i><i class="${on("onThird")}"></i><i></i><i class="${on("onFirst")}"></i></span>`];
   if (s.batter || s.pitcher) bits.push(`<span>${esc(nameOf(s.batter))} <span class="dim">vs</span> ${esc(nameOf(s.pitcher))}</span>`);
+  const run = [["onFirst","1st"],["onSecond","2nd"],["onThird","3rd"]].filter(([k]) => s[k] && typeof s[k] === "object").map(([k, b]) => `${b} ${nameOf(s[k])}`.trim());
+  if (run.length) bits.push(`<span class="dim">On: ${esc(run.join(", "))}</span>`);
   if (s.lastPlay && s.lastPlay.text) bits.push(`<span class="dim" style="flex-basis:100%">${esc(s.lastPlay.text)}</span>`);
   return bits.join(" ");
 }
@@ -237,7 +239,7 @@ function detail(p, row, snap){
   }
   if (g && g.length && !(r && r.pitcher)){
     const l = g.slice(0, 7), h = l.reduce((a, x) => a + (+x.H || 0), 0), ab = l.reduce((a, x) => a + (+x.AB || 0), 0), hr = l.reduce((a, x) => a + (+x.HR || 0), 0);
-    if (ab) say.push(`Last ${l.length} games: ${h} for ${ab}${hr ? `, ${hr} HR` : ""}.`);
+    if (ab) say.push(`Last ${l.length} regular-season games: ${h} for ${ab}${hr ? `, ${hr} HR` : ""}.`);
     let streak = 0; for (const x of g){ if (+x.H > 0) streak++; else break; }
     if (streak >= 5) say.push(`${streak}-game hitting streak coming in.`);
   }

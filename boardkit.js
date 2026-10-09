@@ -42,7 +42,7 @@ SD.once = function(key, fn){
   if (key in cache) return cache[key];
   cache[key] = "pending";
   Promise.resolve().then(fn).then(v => { cache[key] = v == null ? null : v; }, () => { cache[key] = null; })
-    .then(() => { if (SD.S.openId) renderDetail(); });
+    .then(() => { if (SD.S.openId && SD.renderDetail) SD.renderDetail(); });
   return "pending";
 };
 
@@ -377,6 +377,7 @@ SD.start = function(M){
       ${r.html || ""}
       <p class="dim foot">From ESPN${cfg.delay ? `, on your ${cfg.delay}s delay` : ""}. Updates live. Esc or click the player again to close.</p>`;
   }
+  SD.renderDetail = renderDetail;
   SD.tile = (v, k, cls = "") => `<div class="tile${cls ? " " + cls : ""}"><b>${esc(v == null || v === "" ? "–" : v)}</b><i>${esc(k)}</i></div>`;
   document.addEventListener("keydown", e => { if (e.key === "Escape" && S.openId) closePlayer(); });
   document.addEventListener("click", e => {
