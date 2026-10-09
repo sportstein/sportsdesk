@@ -173,7 +173,10 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .tn.sm .st i{font-size:9px;margin-top:1px}
 .tn.sm .none{padding:3px 8px;font-size:13px}
 .pc.mini .note{grid-column:2}
-.addnote{grid-column:2;justify-self:start;background:none;border:0;color:#4a4a63;font-weight:700;font-size:12px;padding:3px 0 0;cursor:pointer}
+/* "+ note" tucks under the jersey number so it costs no height */
+.pc > div:nth-child(2){grid-row:1 / span 2}
+.pc .jn{grid-row:1 !important;align-self:start}
+.addnote{grid-column:1;grid-row:2;justify-self:end;align-self:end;background:none;border:0;color:#4a4a63;font-weight:700;font-size:11px;padding:0 0 2px;cursor:pointer;white-space:nowrap}
 .pc:hover .addnote{color:var(--dim)}
 /* drawer covers only the clicked team's column */
 .drawer{width:min(100vw,max(460px,calc(50vw - 11px)))}
