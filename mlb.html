@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="boardkit.css?v=3">
+<link rel="stylesheet" href="boardkit.css?v=4">
 <style>
 .ls{border-collapse:collapse;font-weight:700;font-size:13px;margin-top:2px}
 .ls td,.ls th{padding:1px 5px;text-align:center;border-bottom:1px solid var(--line)}
@@ -20,7 +20,7 @@
 </style>
 </head>
 <body>
-<script src="boardkit.js?v=3"></script>
+<script src="boardkit.js?v=4"></script>
 <script>
 /* ==================================================================
    MLB spotting board
@@ -212,6 +212,62 @@ function context(sum){
   return out;
 }
 
+
+/* ---------- advanced ---------- */
+function teamMap(snap){
+  const T = {};
+  for (const t of (snap.sum.boxscore && snap.sum.boxscore.teams) || []){
+    const o = T[sideOfTeam(t.team.id)] = {};
+    for (const g of t.statistics || []) for (const x of g.stats || []){ const k = g.name[0] + ":" + x.abbreviation; if (!(k in o)) o[k] = x.displayValue; }
+  }
+  return T;
+}
+function advancedRows(snap){
+  if (SD.S.state === "pre") return null;
+  const T = teamMap(snap); if (!T.away || !T.home) return null;
+  const v = (sd, k) => T[sd][k], f = x => parseFloat(x);
+  const row = (lab, k, dir) => v("away", k) === undefined ? null : [lab, v("away", k), v("home", k), f(v("away", k)), f(v("home", k)), dir];
+  const sp = sd => { const pc = f(v(sd, "p:PC") || v(sd, "p:P")), st = f(v(sd, "p:S")); return pc ? st / pc : null; };
+  const kbb = sd => { const k = f(v(sd, "p:K")), bb = f(v(sd, "p:BB")); return bb ? k / bb : k ? Infinity : null; };
+  const rows = [row("OBP", "b:OBP", 1), row("Slugging", "b:SLG", 1), row("OPS", "b:OPS", 1), row("Extra-base hits", "b:XBH", 1), row("Pitches per PA (at bat)", "b:P/PA", 1),
+    ["Pitches thrown", v("away", "p:PC") || v("away", "p:P"), v("home", "p:PC") || v("home", "p:P"), null, null, 0],
+    ["Strike %", sp("away") != null ? Math.round(sp("away") * 100) + "%" : "–", sp("home") != null ? Math.round(sp("home") * 100) + "%" : "–", sp("away"), sp("home"), 1],
+    ["Pitchers' K / BB", kbb("away") == null ? "–" : kbb("away") === Infinity ? v("away","p:K") + "-0" : kbb("away").toFixed(1), kbb("home") == null ? "–" : kbb("home") === Infinity ? v("home","p:K") + "-0" : kbb("home").toFixed(1), kbb("away"), kbb("home"), 1]];
+  return rows.filter(Boolean);
+}
+function playerAdvanced(p, row){
+  const say = [], tonightT = [], seasonT = [];
+  if (row && row.pitching){
+    const x = row.pitching, pcst = String(x["PC-ST"] || "").split("-"), pc = parseFloat(x.PC || pcst[0]) || 0, st = parseFloat(pcst[1]) || 0, outs = ipToOuts(x.IP);
+    if (pc){
+      tonightT.push(SD.tile(st ? Math.round(100 * st / pc) + "%" : "–", "Strike %"), SD.tile(outs ? (pc / (outs / 3)).toFixed(1) : "–", "Pitches / inning"), SD.tile(`${x.K}-${x.BB}`, "K-BB"));
+      if (st && pc >= 30) say.push(`${Math.round(100 * st / pc)}% strikes tonight, ${outs ? (pc / (outs / 3)).toFixed(1) : "–"} pitches an inning.`);
+    }
+  }
+  if (row && row.batting && row.batting["#P"] && +row.batting["#P"] >= 10) tonightT.push(SD.tile(row.batting["#P"], "Pitches seen"));
+  const st = SD.once("stats:" + p.id, () => SD.stats(p.id));
+  if (st && st !== "pending"){
+    const yr = String(new Date().getFullYear());
+    const B = st["career-batting"], A = st["advanced-batting"], E = st["expanded-batting"], PB = st["postseason-batting"];
+    const PI = st.pitching, PE = st["expanded-pitching"], PO = st["opponent-batting"], PP = st["postseason-pitching"];
+    if (PI && PI._season === yr && !isNaN(parseFloat(PI.IP))){
+      seasonT.push(SD.tile(PI.ERA, "ERA"), SD.tile(PI.WHIP, "WHIP"), SD.tile(PE && PE["K/9"], "K / 9"), SD.tile(PI["K/BB"], "K / BB"), SD.tile(PO && PO.OOPS, "OPS against"), SD.tile(PI.WAR, "WAR"));
+      say.push(`${PI.W}-${PI.L}, ${PI.ERA} ERA, ${PI.WHIP} WHIP${PE && PE["K/9"] ? `, ${PE["K/9"]} K per 9` : ""} this season${PI.WAR && PI.WAR !== "-" ? ` (${PI.WAR} WAR)` : ""}.`);
+      if (PO && PO.OBA) say.push(`Hitters are batting ${PO.OBA} against him${PO.OOPS ? ` with a ${PO.OOPS} OPS` : ""}.`);
+      if (PE && +PE.QS) say.push(`${PE.QS} quality starts.`);
+      if (PP && PP._season === yr && parseFloat(PP.IP)) say.push(`Postseason: ${PP.ERA} ERA, ${PP.IP} IP, ${PP.K} K.`);
+    } else if (B && B._season === yr && +B.AB){
+      seasonT.push(SD.tile(`${B.AVG}/${B.OBP}/${B.SLG}`, "AVG / OBP / SLG"), SD.tile(B.OPS, "OPS"), SD.tile(A && A.ISOP, "ISO power"), SD.tile(A && A["BB/K"], "BB / K"), SD.tile(E && E["P/PA"], "Pitches / PA"), SD.tile(B.WAR, "WAR"));
+      say.push(`Slash line ${B.AVG}/${B.OBP}/${B.SLG}, ${B.OPS} OPS${B.WAR && B.WAR !== "-" ? `, ${B.WAR} WAR` : ""}.`);
+      if (A && A["AB/HR"] && +B.HR >= 5) say.push(`A homer every ${A["AB/HR"]} at-bats.`);
+      if (E && +E.XBH) say.push(`${E.XBH} extra-base hits${+B.SB ? `, ${B.SB} steals` : ""}.`);
+      if (PB && PB._season === yr && +PB.AB) say.push(`Postseason: ${PB.AVG}/${PB.OBP}/${PB.SLG} in ${PB.GP} games.`);
+    }
+  }
+  const html = (tonightT.length ? `<h4>Advanced, tonight</h4><div class="tiles">${tonightT.join("")}</div>` : "") +
+    (st === "pending" ? `<h4>Advanced, season</h4><p class="dim">Loading…</p>` : seasonT.length ? `<h4>Advanced, season</h4><div class="tiles">${seasonT.join("")}</div>` : "");
+  return { say, html };
+}
 function detail(p, row, snap){
   const say = [], r = rates(p.season), ps = post(p);
   const log = SD.once("log:" + p.id, () => SD.gamelog(p.id));
@@ -251,7 +307,11 @@ function detail(p, row, snap){
     const cols = want.filter(c => g[0][c] !== undefined);
     logHtml = `<h4>Last ${Math.min(5, g.length)} games</h4><table><tr><th></th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${g.slice(0, 5).map(x => `<tr><td>${esc(x.date ? new Date(x.date).toLocaleDateString([], { month:"short", day:"numeric" }) : "")} ${esc(x.opp)} <span class="dim">${esc(x.res)}</span></td>${cols.map(c => `<td>${esc(x[c])}</td>`).join("")}</tr>`).join("")}</table>`;
   }
-  return { say, html:(tiles ? `<h4>Tonight</h4><div class="tiles">${tiles}</div>` : "") + logHtml };
+  const adv = playerAdvanced(p, row);
+  if (adv.say.length) for (let i = say.length - 1; i >= 0; i--) if (/^Season:|^This postseason:/.test(say[i])) say.splice(i, 1);
+  const at = say.findIndex(x => /^Last \d/.test(x));
+  say.splice(at < 0 ? say.length : at, 0, ...adv.say);
+  return { say, html:(tiles ? `<h4>Tonight</h4><div class="tiles">${tiles}</div>` : "") + adv.html + logHtml };
 }
 
 SD.start({
@@ -282,6 +342,7 @@ SD.start({
   },
   seasonOf: p => SD.overview(p.id, /regular/i),
   bio: p => esc([p.ht, p.wt, p.age ? p.age + " yrs" : ""].filter(Boolean).join(" · ")) + (p.college ? ` · <b>${esc(p.college)}</b>` : ""),
+  advancedRows, advancedFoot: () => "Tonight's game only. Pitches per PA is how deep each lineup worked counts.",
   parseLive, tonight, badges, seasonLine, seasonMini, chipLine, groups, clock, possession, situation, pulse, feed, teamRows, context, detail
 });
 </script>

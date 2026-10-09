@@ -7,10 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="boardkit.css?v=3">
+<link rel="stylesheet" href="boardkit.css?v=4">
 </head>
 <body>
-<script src="boardkit.js?v=3"></script>
+<script src="boardkit.js?v=4"></script>
 <script>
 /* ==================================================================
    NFL spotting board
@@ -205,6 +205,104 @@ function context(sum){
 }
 
 /* on-air lines */
+
+/* ---------- advanced: per-player rates (tonight + season) and per-drive team numbers ---------- */
+const pct = (a, b) => b ? Math.round(100 * a / b) + "%" : "–";
+const r1 = x => x == null || !isFinite(x) ? "–" : (Math.round(x * 10) / 10).toFixed(1);
+const nn = x => parseFloat(String(x ?? "").replace(/,/g, "")) || 0;
+function teamTotals(snap, side){
+  const t = ((snap.sum.boxscore && snap.sum.boxscore.teams) || []).find(x => sideOfTeam(x.team.id) === side);
+  const o = {}; ((t && t.statistics) || []).forEach(x => o[x.name] = x.displayValue);
+  const ca = String(o.completionAttempts || "0/0").split("/");
+  return { passAtt:nn(ca[1]), rushAtt:nn(o.rushingAttempts), yards:nn(o.totalYards), plays:nn(o.totalOffensivePlays) };
+}
+function playerAdvanced(p, row, snap){
+  const say = [], tonightT = [], seasonT = [];
+  if (row && snap && SD.S.state !== "pre"){
+    const T = teamTotals(snap, p.side);
+    if (row.passing){
+      const x = row.passing, ca = String(x["C/ATT"] || "0/0").split("/"), cmp = nn(ca[0]), att = nn(ca[1]);
+      const sk = String(x.SACKS || "0-0").split("-"), sacks = nn(sk[0]), skY = nn(sk[1]);
+      const anya = att + sacks ? (nn(x.YDS) + 20 * nn(x.TD) - 45 * nn(x.INT) - skY) / (att + sacks) : null;
+      tonightT.push(SD.tile(pct(cmp, att), "Completion %"), SD.tile(r1(att ? nn(x.YDS) / att : null), "Yards / attempt"), SD.tile(r1(anya), "ANY/A"));
+      if (anya != null && att >= 8) say.push(`${r1(anya)} adjusted net yards per attempt tonight (counts TDs, picks and sacks).`);
+    }
+    if (row.rushing && nn(row.rushing.CAR)){
+      const x = row.rushing;
+      tonightT.push(SD.tile(r1(nn(x.YDS) / nn(x.CAR)), "Yards / carry"), SD.tile(pct(nn(x.CAR), T.rushAtt), "Share of team carries"));
+      if (p.pos !== "QB" && T.rushAtt >= 6) say.push(`${nn(x.CAR)} of ${SD.S.teams[p.side].abbr}'s ${T.rushAtt} carries (${pct(nn(x.CAR), T.rushAtt)}).`);
+    }
+    if (row.receiving && nn(row.receiving.TGTS)){
+      const x = row.receiving, tg = nn(x.TGTS);
+      tonightT.push(SD.tile(pct(nn(x.REC), tg), "Catch rate"), SD.tile(r1(nn(x.YDS) / tg), "Yards / target"), SD.tile(pct(tg, T.passAtt), "Target share"));
+      if (T.passAtt >= 8 && tg / T.passAtt >= .2) say.push(`Seeing ${pct(tg, T.passAtt)} of the targets tonight (${tg} of ${T.passAtt}).`);
+    }
+    const scrim = nn(row.rushing && row.rushing.YDS) + nn(row.receiving && row.receiving.YDS);
+    if (scrim >= 40 && T.yards > 0 && p.pos !== "QB") say.push(`${scrim} scrimmage yards, ${pct(scrim, T.yards)} of the offense.`);
+  }
+  const st = SD.once("stats:" + p.id, () => SD.stats(p.id));
+  if (st && st !== "pending"){
+    const gp = c => nn(c && c.GP) || null;
+    const P = st.passing, R = st.rushing, C = st.receiving, D = st.defensive, K = st.kicking;
+    if (P && nn(P.ATT) >= 20){
+      seasonT.push(SD.tile(P.QBR && P.QBR !== "-" ? P.QBR : P.RTG, P.QBR && P.QBR !== "-" ? "QBR" : "Rating"), SD.tile(P.AVG, "Yards / attempt"), SD.tile(P["CMP%"] + "%", "Completion %"),
+        SD.tile(r1(nn(P.YDS) / (gp(P) || 1)), "Pass yards / game"), SD.tile(`${P.TD}:${P.INT}`, "TD : INT"), SD.tile(r1(nn(P.SACK) / (gp(P) || 1)), "Sacked / game"));
+      if (P.QBR && P.QBR !== "-") say.push(`Season QBR ${P.QBR}, ${P.AVG} yards an attempt, ${P.TD} TD to ${P.INT} INT.`);
+    }
+    if (R && nn(R.CAR) >= 15 && p.pos !== "QB"){
+      seasonT.push(SD.tile(R.AVG, "Yards / carry"), SD.tile(r1(nn(R.YDS) / (gp(R) || 1)), "Rush yards / game"), SD.tile(R.FD, "Rushing 1st downs"));
+      say.push(`${r1(nn(R.YDS) / (gp(R) || 1))} rushing yards a game this season at ${R.AVG} a carry${nn(R.FUM) ? `, ${R.FUM} fumbles` : ""}.`);
+    }
+    if (C && nn(C.TGTS) >= 8){
+      seasonT.push(SD.tile(pct(nn(C.REC), nn(C.TGTS)), "Catch rate"), SD.tile(r1(nn(C.YDS) / nn(C.TGTS)), "Yards / target"), SD.tile(r1(nn(C.YDS) / (gp(C) || 1)), "Rec yards / game"), SD.tile(C.FD, "Receiving 1st downs"));
+      say.push(`This season: ${pct(nn(C.REC), nn(C.TGTS))} catch rate, ${r1(nn(C.YDS) / nn(C.TGTS))} yards a target, ${r1(nn(C.YDS) / (gp(C) || 1))} yards a game.`);
+    }
+    if (D && nn(D.TOT) >= 5 && !P && !C){
+      seasonT.push(SD.tile(r1(nn(D.TOT) / (gp(D) || 1)), "Tackles / game"), SD.tile(D.SACK, "Sacks"), SD.tile(D.FF, "Forced fumbles"), SD.tile(D.PD, "Passes defended"));
+      say.push(`${r1(nn(D.TOT) / (gp(D) || 1))} tackles a game this season${nn(D.SACK) ? `, ${D.SACK} sacks` : ""}${nn(D.FF) ? `, ${D.FF} forced fumbles` : ""}.`);
+    }
+    if (K && nn(K.FG)){
+      const fg = String(K.FG); seasonT.push(SD.tile(fg, "Field goals"), SD.tile(K["FG%"] + "%", "FG %"), SD.tile(K["50+"], "From 50+"), SD.tile(K.LNG, "Long"));
+      say.push(`${fg} on field goals this season (${K["FG%"]}%), ${K["50+"]} from 50 and beyond.`);
+    }
+  }
+  const html = (tonightT.length ? `<h4>Advanced, tonight</h4><div class="tiles">${tonightT.join("")}</div>` : "") +
+    (st === "pending" ? `<h4>Advanced, season</h4><p class="dim">Loading…</p>` : seasonT.length ? `<h4>Advanced, season</h4><div class="tiles">${seasonT.join("")}</div>` : "");
+  return { say, html };
+}
+function drivesBySide(snap){
+  const drv = snap.sum.drives || {}, list = [...(drv.previous || [])];
+  if (drv.current && !list.some(d => d.id === drv.current.id)) list.push(drv.current);
+  const out = { away:[], home:[] };
+  for (const d of list){ const sd = sideOfTeam(d.team && d.team.id); if (sd && !/end of (half|game)|kneel/i.test(d.displayResult || "")) out[sd].push(d); }
+  return out;
+}
+function startYard(d, side){
+  const t = String((d.start && d.start.text) || ""), m = t.match(/^([A-Z]+)\s+(\d+)$/), ab = SD.S.teams[side].abbr;
+  if (!m) return /^50$/.test(t.trim()) ? 50 : null;
+  return m[1] === ab ? +m[2] : 100 - +m[2];
+}
+function advancedRows(snap){
+  const S = SD.S, D = drivesBySide(snap); if (!D.away.length && !D.home.length) return null;
+  const comp = snap.sum.header.competitions[0], score = sd => nn((comp.competitors.find(c => c.homeAway === sd) || {}).score);
+  const T = {}; for (const t of (snap.sum.boxscore && snap.sum.boxscore.teams) || []){ const o = T[sideOfTeam(t.team.id)] = {}; (t.statistics || []).forEach(x => o[x.name] = x.displayValue); }
+  const m = sd => {
+    const ds = D[sd], n = ds.length || 1;
+    const starts = ds.map(d => startYard(d, sd)).filter(x => x != null);
+    const expl = ds.reduce((a, d) => a + (d.plays || []).filter(p => nn(p.statYardage) >= 20 && /pass|rush|run/i.test((p.type && p.type.text) || "") && !/penalty/i.test((p.type && p.type.text) || "")).length, 0);
+    const three = ds.filter(d => nn(d.offensivePlays) <= 3 && /punt/i.test(d.result || d.displayResult || "")).length;
+    const rz = String((T[sd] || {}).redZoneAttempts || "0-0").split("-");
+    const to = nn((T[sd] || {}).turnovers), otherTo = nn((T[sd === "away" ? "home" : "away"] || {}).turnovers);
+    return { ppd: score(sd) / n, ypd: ds.reduce((a, d) => a + nn(d.yards), 0) / n, start: starts.length ? starts.reduce((a, b) => a + b, 0) / starts.length : null, expl, three, rzTd:nn(rz[0]), rzAtt:nn(rz[1]), margin: otherTo - to, n:ds.length };
+  };
+  const a = m("away"), h = m("home");
+  const own = x => x == null ? "–" : x <= 50 ? `own ${Math.round(x)}` : `opp ${Math.round(100 - x)}`;
+  const sg = x => x > 0 ? `+${x}` : `${x}`;
+  return [["Points / drive", r1(a.ppd), r1(h.ppd), a.ppd, h.ppd, 1], ["Yards / drive", r1(a.ypd), r1(h.ypd), a.ypd, h.ypd, 1],
+    ["Avg start", own(a.start), own(h.start), a.start, h.start, 1], ["Explosive plays (20+)", a.expl, h.expl, a.expl, h.expl, 1],
+    ["Three-and-outs", a.three, h.three, a.three, h.three, -1], ["Red zone TD", a.rzAtt ? `${a.rzTd}/${a.rzAtt}` : "–", h.rzAtt ? `${h.rzTd}/${h.rzAtt}` : "–", a.rzAtt ? a.rzTd / a.rzAtt : null, h.rzAtt ? h.rzTd / h.rzAtt : null, 1],
+    ["Turnover margin", sg(a.margin), sg(h.margin), a.margin, h.margin, 1]];
+}
 function detail(p, row, snap){
   const S = SD.S, say = [], s = p.season || {};
   const log = SD.once("log:" + p.id, () => SD.gamelog(p.id));
@@ -260,7 +358,9 @@ function detail(p, row, snap){
     const cols = (log.labels || []).filter((l, i, a) => a.indexOf(l) === i).slice(0, 6);
     logHtml = `<h4>Last ${Math.min(5, g.length)} games</h4><table><tr><th></th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${g.slice(0, 5).map(x => `<tr><td>${esc(x.date ? new Date(x.date).toLocaleDateString([], { month:"short", day:"numeric" }) : "")} ${esc(x.opp)} <span class="dim">${esc(x.res)}</span></td>${cols.map(c => `<td>${esc(x[c])}</td>`).join("")}</tr>`).join("")}</table>`;
   }
-  return { say, html:(tiles ? `<h4>Tonight</h4><div class="tiles">${tiles}</div>` : "") + logHtml };
+  const adv = playerAdvanced(p, row, snap);
+  say.splice(Math.min(say.length, row ? 3 : 1), 0, ...adv.say);
+  return { say, html:(tiles ? `<h4>Tonight</h4><div class="tiles">${tiles}</div>` : "") + adv.html + logHtml };
 }
 
 SD.start({
@@ -284,6 +384,7 @@ SD.start({
   },
   seasonOf: p => SD.overview(p.id, /regular/i),
   bio: p => esc([p.ht, p.wt, p.age ? p.age + " yrs" : "", p.exp != null ? (p.exp === 0 ? "rookie" : `${p.exp} yr${p.exp === 1 ? "" : "s"} pro`) : ""].filter(Boolean).join(" · ")) + (p.college ? ` · <b>${esc(p.college)}</b>` : ""),
+  advancedRows, advancedFoot: () => "Avg start = average field position where drives began. Explosive = 20+ yard runs or catches.",
   extra, parseLive, tonight, chipLine, seasonLine, seasonMini, groups, clock, possession, situation, pulse, feed, teamRows, context, detail,
   teamFoot: snap => { const t = (snap.sum.boxscore && snap.sum.boxscore.teams) || []; const td = t.map(x => (x.statistics || []).find(s => s.name === "totalDrives")); return td.every(Boolean) ? `${SD.S.teams.away.abbr} ${td[0].displayValue} drives · ${SD.S.teams.home.abbr} ${td[1].displayValue} drives` : ""; }
 });

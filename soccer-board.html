@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="boardkit.css?v=3">
+<link rel="stylesheet" href="boardkit.css?v=4">
 <style>
 .pc .yc,.chip .yc{font-weight:800;font-size:12px;background:#e8c11c;color:#111;padding:1px 6px}
 .pc .rc{font-weight:800;font-size:12px;background:var(--chair);color:#fff;padding:1px 6px}
@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-<script src="boardkit.js?v=3"></script>
+<script src="boardkit.js?v=4"></script>
 <script>
 /* ==================================================================
    Soccer spotting board: Premier League and Champions League
@@ -197,6 +197,74 @@ function context(sum){
   return out;
 }
 
+
+/* ---------- advanced ---------- */
+const pc = (a, b) => b ? Math.round(100 * a / b) + "%" : "–";
+function matchMinute(snap){
+  const st = snap.sum.header.competitions[0].status || {}, ty = st.type || {};
+  if (ty.state === "post") return st.period > 2 ? 120 : 90;
+  if (/HALFTIME/.test(ty.name || "")) return 45;
+  const m = String(st.displayClock || "").match(/^(\d+)'(?:\+(\d+))?/);
+  return m ? +m[1] + (+m[2] || 0) : null;
+}
+function minutesPlayed(row, snap){
+  if (!row || (!row.starter && !row.subIn)) return null;
+  const now = matchMinute(snap); if (now == null) return null;
+  const mm = x => { const m = String(x || "").match(/^(\d+)'?(?:\+(\d+))?/); return m ? +m[1] + (+m[2] || 0) : null; };
+  const on = row.starter ? 0 : mm(row.onMin), off = row.offMin ? mm(row.offMin) : now;
+  return on == null || off == null ? null : Math.max(0, off - on);
+}
+function teamStat(snap){
+  const T = {}; for (const t of (snap.sum.boxscore && snap.sum.boxscore.teams) || []){ const o = T[sideOfTeam(t.team.id)] = {}; (t.statistics || []).forEach(x => o[x.name] = x.displayValue); }
+  return T;
+}
+function advancedRows(snap){
+  if (SD.S.state === "pre") return null;
+  const T = teamStat(snap); if (!T.away || !T.home) return null;
+  const comp = snap.sum.header.competitions[0], goals = sd => n((comp.competitors.find(c => c.homeAway === sd) || {}).score);
+  const ratio = (sd, a, b) => n(T[sd][b]) ? n(T[sd][a]) / n(T[sd][b]) : null;
+  const r = (lab, fa, fh, dir, fmt) => [lab, fmt(fa), fmt(fh), fa, fh, dir];
+  const P = x => x == null ? "–" : Math.round(x * 100) + "%";
+  const conv = sd => n(T[sd].totalShots) ? goals(sd) / n(T[sd].totalShots) : null;
+  return [r("Shot conversion", conv("away"), conv("home"), 1, P), r("Shot accuracy", ratio("away","shotsOnTarget","totalShots"), ratio("home","shotsOnTarget","totalShots"), 1, P),
+    r("Passes completed", n(T.away.accuratePasses), n(T.home.accuratePasses), 1, x => String(x)), r("Cross accuracy", ratio("away","accurateCrosses","totalCrosses"), ratio("home","accurateCrosses","totalCrosses"), 1, P),
+    r("Long-ball accuracy", ratio("away","accurateLongBalls","totalLongBalls"), ratio("home","accurateLongBalls","totalLongBalls"), 1, P),
+    r("Tackle success", ratio("away","effectiveTackles","totalTackles"), ratio("home","effectiveTackles","totalTackles"), 1, P),
+    r("Blocked shots", n(T.away.blockedShots), n(T.home.blockedShots), 1, x => String(x)), r("Clearances", n(T.away.totalClearance), n(T.home.totalClearance), 0, x => String(x))];
+}
+function playerAdvanced(p, row, snap, ov){
+  const say = [], todayT = [], seasonT = [], s = p.season || {};
+  if (row && snap && SD.S.state !== "pre"){
+    const mins = minutesPlayed(row, snap), st = row.st;
+    if (mins != null) todayT.push(SD.tile(mins + "'", "Minutes"));
+    if (!isGK(p) && (row.starter || row.subIn)){
+      const T = teamStat(snap)[p.side] || {};
+      todayT.push(SD.tile(pc(n(st.SOG), n(st.SHOT)), "Shot accuracy"), SD.tile(pc(n(st.SHOT), n(T.totalShots)), "Share of team shots"));
+      if (n(st.SHOT) >= 3 && n(T.totalShots)) say.push(`${st.SHOT} of ${p.side === "home" ? SD.S.teams.home.abbr : SD.S.teams.away.abbr}'s ${T.totalShots} shots are his.`);
+    }
+  }
+  if (p.season){
+    if (isGK(p)){
+      const faced = n(s.SV) + n(s.GA);
+      seasonT.push(SD.tile(pc(n(s.SV), faced), "Save %"), SD.tile(n(s.APP) ? (n(s.GA) / n(s.APP)).toFixed(2) : "–", "Conceded / app"));
+      if (faced >= 5) say.push(`Saving ${pc(n(s.SV), faced)} of shots on target in the ${LNAME}.`);
+    } else {
+      const ga = n(s.G) + n(s.A);
+      seasonT.push(SD.tile(ga, "Goal involvements"), SD.tile(pc(n(s.G), n(s.SHOT)), "Shot conversion"), SD.tile(pc(n(s.SOG), n(s.SHOT)), "Shot accuracy"),
+        SD.tile(n(s.APP) ? (n(s.SHOT) / n(s.APP)).toFixed(1) : "–", "Shots / app"), SD.tile(n(s.APP) ? (ga / n(s.APP)).toFixed(2) : "–", "G+A / app"));
+      if (n(s.SHOT) >= 5 && n(s.G)) say.push(`Converting ${pc(n(s.G), n(s.SHOT))} of his shots this ${LNAME} season.`);
+      if (ga >= 3) say.push(`${ga} goal involvements in ${s.APP} ${LNAME} appearances.`);
+    }
+  }
+  if (ov && ov !== "pending" && ov._all && !isGK(p)){
+    const now = clubNow(ov), sh = now.reduce((a, x) => a + n(x.SHOT), 0), g = now.reduce((a, x) => a + n(x.G), 0), on = now.reduce((a, x) => a + n(x.SOG), 0);
+    if (sh >= 5) seasonT.push(SD.tile(pc(g, sh), "Conversion, all comps"), SD.tile(pc(on, sh), "Accuracy, all comps"));
+  }
+  const html = (todayT.length ? `<h4>Advanced, today</h4><div class="tiles">${todayT.join("")}</div>` : "") +
+    (seasonT.length ? `<h4>Advanced, season</h4><div class="tiles">${seasonT.join("")}</div>` : "");
+  return { say, html };
+}
+const clubNow = ov => ov._all.filter(x => (x._label.includes(SEASON_TAG) || (x._label.startsWith(String(SEASON_START)) && /shield|super ?cup|supercopa|supercoppa/i.test(x._label))) && !/nations league|friendly|world cup|euro|qualif|copa am|africa cup|gold cup/i.test(x._label));
 function detail(p, row, snap){
   const say = [], s = p.season || {};
   const ov = SD.once("ov:" + p.id, () => SD.overview(p.id));
@@ -231,7 +299,10 @@ function detail(p, row, snap){
   if (p.inj && SD.SERIOUS.test(p.inj)) say.push(`Listed ${p.inj}.`);
   const tiles = row && (row.starter || row.subIn) ? (isGK(p) ? SD.tile(row.st.SV ?? 0, "Saves") + SD.tile(row.st.GA ?? 0, "Conceded") + SD.tile(row.st.SHF ?? "–", "Shots faced")
     : SD.tile(row.goals.length, "Goals") + SD.tile(row.st.SHOT ?? 0, "Shots") + SD.tile(row.st.SOG ?? 0, "On target") + SD.tile(row.st.FC ?? 0, "Fouls") + SD.tile(row.st.FA ?? 0, "Fouled") + SD.tile(row.st.OF ?? 0, "Offsides")) : "";
-  return { say, html:(tiles ? `<h4>Today</h4><div class="tiles">${tiles}</div>` : "") + comps };
+  const adv = playerAdvanced(p, row, snap, ov);
+  const at = say.findIndex(x => x.startsWith(p.nat || "\u0000"));
+  say.splice(at < 0 ? say.length : at, 0, ...adv.say);
+  return { say, html:(tiles ? `<h4>Today</h4><div class="tiles">${tiles}</div>` : "") + adv.html + comps };
 }
 
 SD.start({
@@ -255,6 +326,7 @@ SD.start({
     return out;
   },
   bio: p => esc([p.nat, p.age ? p.age + " yrs" : "", p.ht].filter(Boolean).join(" · ")),
+  advancedRows, advancedFoot: () => "Shot conversion = goals per shot. Accuracy = share of shots on target.",
   parseLive, tonight, badges, seasonLine, seasonMini, chipLine, groups, clock, pulse, feed, teamRows, context, detail
 });
 </script>

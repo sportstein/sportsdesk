@@ -318,7 +318,16 @@ SD.start = function(M){
     el.innerHTML = `<h3>Team stats</h3><table class="tb">
       <tr><th style="--tc:${A.color}"><i></i>${esc(A.abbr)}</th><th></th><th style="--tc:${H.color}"><i></i>${esc(H.abbr)}</th></tr>
       ${rows.map(([k, a, h, na, nh, dir]) => `<tr>${cell(a, na, nh, dir)}<td class="k">${esc(k)}</td>${cell(h, nh, na, dir)}</tr>`).join("")}
-    </table>${M.teamFoot ? `<p class="tbf">${esc(M.teamFoot(snap) || "")}</p>` : ""}`;
+    </table>${M.teamFoot ? `<p class="tbf">${esc(M.teamFoot(snap) || "")}</p>` : ""}` + advTable(snap, cell, A, H);
+  }
+  // second table: advanced numbers the sport file works out (rates, per-drive, efficiency)
+  function advTable(snap, cell, A, H){
+    let rows = null;
+    try{ rows = M.advancedRows ? M.advancedRows(snap) : null; }catch(e){ console.error(e); }
+    if (!rows || !rows.length) return "";
+    return `<h3 style="margin-top:12px">Advanced</h3><table class="tb">
+      ${rows.map(([k, a, h, na, nh, dir]) => `<tr>${cell(a, na, nh, dir)}<td class="k">${esc(k)}</td>${cell(h, nh, na, dir)}</tr>`).join("")}
+    </table>${M.advancedFoot ? `<p class="tbf">${esc(M.advancedFoot(snap) || "")}</p>` : ""}`;
   }
 
   let timer = null;
@@ -410,6 +419,19 @@ SD.gamelog = async function(id, season){
   return { games, labels, label:(types[0] && types[0].displayName) || "" };
 };
 /* overview stat line: labels + the split whose name matches `want` (regex), else the first */
+/* full stat sheet (/stats): { categoryName: { LABEL: value } } for the latest season, plus .career totals */
+SD.stats = async function(id){
+  const d = await J(`${SD.ATH}/${id}/stats`);
+  const out = { _career:{} };
+  for (const c of d.categories || []){
+    const labels = (c.labels || []).map(x => String(x).toUpperCase().trim());
+    const ent = (c.statistics || []).slice(-1)[0];
+    const pack = arr => { const o = {}; labels.forEach((l, i) => { const k = l in o ? l + "_2" : l; o[k] = (arr || [])[i]; }); return o; };
+    if (ent) out[c.name] = Object.assign(pack(ent.stats), { _season: ent.season && ent.season.displayName });
+    if (c.totals) out._career[c.name] = pack(c.totals);
+  }
+  return out;
+};
 SD.overview = async function(id, want){
   const d = await J(`${SD.ATH}/${id}/overview`);
   const s = d.statistics; if (!s || !s.labels || !s.splits) return null;
