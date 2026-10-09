@@ -51,7 +51,7 @@ button,input,textarea{font:inherit;color:inherit}
 .desk .box h3{font-size:15px;margin-bottom:3px}
 @media (max-width:1279px){
   .layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"desk desk" "away home"}
-  .desk{position:static;max-height:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+  .desk{position:static;max-height:none;overflow:visible;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
   .desk .alerts{grid-row:span 3}
 }
 @media (max-width:860px){ .layout{grid-template-columns:1fr;grid-template-areas:"desk" "away" "home"} .desk{grid-template-columns:1fr} }
