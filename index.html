@@ -313,14 +313,14 @@ const DEFAULTS = {
   league: "nba",        // nba | wnba | mens-college-basketball | womens-college-basketball
   show:   "Live call",
   view:   "overlay",    // overlay (OBS) | monitor (your own screen)
-  poll:   10,           // seconds (min 5)
+  poll:   5,            // seconds (min 5)
   pos:    "bl",         // bl | br | bc
   scale:  1,
   dates:  "",           // YYYYMMDD
   demo:   false,        // true = simulated game, sped up
   off:    "",           // comma list of alerts to switch off, e.g. off=biglead,quarter
   handle: "twitch.tv/sportstein", // channel in the top-right corner; handle= (empty) hides it
-  lastplay: true,       // last-play line under the bug (lastplay=0 hides it)
+  lastplay: true,       // last-play line under the bug: every play (lastplay=scores for baskets and timeouts only, lastplay=0 hides it)
   extras: true,         // timeout dots + BONUS on the bug (extras=0 hides them)
   // thresholds
   run:      5,          // unanswered points for a run alert
@@ -341,6 +341,7 @@ cfg.delay = Math.max(0, Math.min(120, cfg.delay));
 if (cfg.delay && !P.has("poll")) cfg.poll = 5;      // finer steps when delayed
 cfg.poll = Math.max(5, cfg.poll);
 cfg.demo = cfg.demo === true || cfg.demo === "1" || cfg.demo === "true";
+const LP_SCORES = String(cfg.lastplay) === "scores";
 ["lastplay","extras"].forEach(k => cfg[k] = !(cfg[k] === false || cfg[k] === "0" || cfg[k] === "false"));
 const OFF = new Set(String(cfg.off).toLowerCase().split(",").map(s => s.trim()).filter(Boolean));
 const on = k => !OFF.has(k);
@@ -602,6 +603,8 @@ function extrasOf(plays, away, home, st){
     }
     if (sd && pp === per && /foul/i.test(ty) && !/offensive|technical|turnover/i.test(ty)){ f[sd]++; if (c <= 120) l2[sd]++; }
     if (sd && p.scoringPlay && +p.scoreValue > 0) last = { side:sd, kind:"score", text:String(p.text || ""), pts:+p.scoreValue, a:+p.awayScore, h:+p.homeScore };
+    else if (!LP_SCORES && p.text && !/timeout/i.test(ty) && !/enters the game|substitution|delay|instant replay|challenge/i.test(String(p.text) + " " + ty))
+      last = { side:sd || (last && last.side) || "away", kind:"play", text:String(p.text), a:+p.awayScore, h:+p.homeScore, team:!!sd };
   }
   const cap = per > L.n ? 3 : 4;
   const teams = {};
@@ -620,6 +623,11 @@ function extrasOf(plays, away, home, st){
 function lastPlayHTML(m, lp){
   const T = m[lp.side], esc2 = x => String(x).replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
   if (lp.kind === "to") return `<b>${esc2(lp.text)}</b>`;
+  if (lp.kind === "play"){
+    const t = lp.text.replace(/^([A-ZÀ-Ý])[^\s]*\s+(?=[A-ZÀ-Ý])/, "$1. ");
+    const sc = Number.isFinite(lp.a) && Number.isFinite(lp.h) ? ` <em>${esc2(m.away.abbr)} ${lp.a}-${lp.h} ${esc2(m.home.abbr)}</em>` : "";
+    return `<b>${esc2(t)}</b>${sc}`;
+  }
   const t = lp.text, who = (t.match(/^(.*?) (makes|made|scores|dunks)/i) || [])[1] || "";
   const short = who.replace(/^(\S)\S*\s+/, "$1. ");
   const ast = (t.match(/\((.+?) assists?\)/i) || [])[1];

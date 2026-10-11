@@ -202,6 +202,12 @@ textarea.story{width:100%;min-height:96px;background:var(--ink);border:1px solid
 .ssn.ly{margin-top:3px}
 .ssn.ly .lab{background:transparent;border:1px solid var(--desk);color:#8fb4e6}
 .ssn .gp{color:var(--dim);font-weight:600}
+/* score by quarter, first thing in the strip under the score */
+.ls{border-collapse:collapse;font-weight:700;font-size:13px;flex-basis:100%;margin-bottom:2px}
+.ls td,.ls th{padding:1px 6px;text-align:center;border-bottom:1px solid var(--line)}
+.ls th{color:var(--dim);font-weight:700;font-size:11px}
+.ls td:first-child{text-align:left;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:15px}
+.ls .tot{color:var(--pencil)}
 </style>
 </head>
 <body>
@@ -427,7 +433,7 @@ function card(p, mini){
     if (!played) nowRow = `<div class="tn"><span class="lab">TONIGHT</span><span class="none">${l.inactive ? "Inactive" : S.state === "post" ? "Did not play" : "Hasn't played yet"}</span></div>`;
     else {
       const above = k => { const a = num(s[k]), b = num(l[k]); return a != null && b != null && b > a; };
-      const items = [["PTS","PTS",above("PTS")],["REB","REB",above("REB")],["AST","AST",above("AST")],["FG","FG"],["3PT","3PT"],["FT","FT"],["STL","STL"],["BLK","BLK"],["PF","PF",false,(num(l.PF) || 0) >= 4],["MIN","MIN"]];
+      const items = [["PTS","PTS",above("PTS")],["REB","REB",above("REB")],["AST","AST",above("AST")],["FG","FG"],["3PT","3PT"],["FT","FT"],["STL","STL"],["BLK","BLK"],["TO","TO",false,(num(l.TO) || 0) >= 4],["PF","PF",false,(num(l.PF) || 0) >= 4],["MIN","MIN"]];
       nowRow = `<div class="tn"><span class="lab">TONIGHT</span>` + items.map(([lab, k, up, warn]) =>
         `<span class="st${up ? " up" : ""}${warn ? " warn" : ""}${/FG|3PT|FT/.test(lab) ? " w" : ""}"><b>${f(l[k])}</b><i>${lab}</i></span>`).join("") + `</div>`;
     }
@@ -866,6 +872,14 @@ function renderPulse(sum){
       const left = sd => { let x = 7 - to[sd]; if (per === 4) x = Math.min(x, 4 - toQ4[sd]); if (per === 4 && ck <= 180) x = Math.min(x, 2 - toL3[sd]); return Math.max(0, x); };
       bits.push(`<span class="grpx">Timeouts left</span><span>${esc(A.abbr)} ${left("away")}</span><span>${esc(H.abbr)} ${left("home")}</span>`);
     }
+  }
+  // score by quarter
+  const cs = ["away","home"].map(sd => sum.header.competitions[0].competitors.find(c => c.homeAway === sd));
+  const nq = Math.max(NQ, ...cs.map(c => (c.linescores || []).length));
+  if (cs.some(c => (c.linescores || []).length)){
+    const qn = i => i < NQ ? (NQ === 2 ? `H${i + 1}` : `Q${i + 1}`) : (i - NQ ? `${i - NQ + 1}OT` : "OT");
+    bits.unshift(`<table class="ls"><tr><th></th>${Array.from({ length:nq }, (_, i) => `<th>${qn(i)}</th>`).join("")}<th>T</th></tr>` +
+      cs.map(c => `<tr><td>${esc(c.team.abbreviation)}</td>${Array.from({ length:nq }, (_, i) => { const l = (c.linescores || [])[i]; return `<td>${l ? esc(l.displayValue ?? l.value ?? "") : ""}</td>`; }).join("")}<td class="tot">${esc(c.score ?? "")}</td></tr>`).join("") + `</table>`);
   }
   el.hidden = !bits.length;
   el.innerHTML = bits.join("");
