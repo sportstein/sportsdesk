@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>SportsDesk Break Card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ==================================================================
+   SportsDesk break card (OBS browser source, 1920 x 1080, transparent)
+   Pops up by itself at the end of each quarter, at halftime and at the final,
+   then slides away when play starts again.
+   https://sportstein.github.io/sportsdesk/recap.html?team=BOS
+   Options: team, event, league, delay (seconds, match the scorebug), pos (left | right | center),
+            preview=1 (show it now, whatever the game state, for setting up OBS)
+   ================================================================== */
+:root{ --chair:#c41e1e; --desk:#1a5fa8; --ink:#07070f; --slate:#151522; --slate2:#1d1d2c; --line:#2a2a40; --chalk:#f3f1ea; --dim:#9a99b2; --pencil:#ffcf33; }
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;background:transparent;overflow:hidden}
+body{font-family:"Barlow Semi Condensed","Arial Narrow",sans-serif;color:var(--chalk);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.D{font-family:"Big Shoulders Display","Arial Narrow",sans-serif}
+.card{position:absolute;top:110px;left:64px;width:780px;background:rgba(7,7,15,.94);box-shadow:0 20px 60px rgba(0,0,0,.6);
+  transform:translateX(-110%);opacity:0;transition:transform .7s cubic-bezier(.2,.8,.2,1),opacity .5s}
+.pos-right .card{left:auto;right:64px;transform:translateX(110%)}
+.pos-center .card{left:50%;margin-left:-390px;transform:translateY(60px)}
+.card.on{transform:none;opacity:1}
+.head{display:flex;align-items:stretch}
+.tag{background:var(--chair);font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:30px;padding:10px 18px 8px;line-height:1}
+.title{flex:1;background:var(--desk);display:flex;align-items:center;padding:0 18px;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:34px;letter-spacing:.02em;text-transform:uppercase}
+.score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:18px 22px 10px}
+.tm{display:flex;align-items:center;gap:14px}
+.tm.h{flex-direction:row-reverse}
+.tm i{width:12px;height:64px;background:var(--tc)}
+.tm b{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:56px;line-height:1}
+.tm span{font-weight:600;font-size:18px;color:var(--dim);display:block}
+.tm.h div{text-align:right}
+.big{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:88px;line-height:1;padding:0 18px;white-space:nowrap}
+.big em{font-style:normal;color:var(--dim);font-size:50px;margin:0 10px;vertical-align:16px}
+.ls{width:calc(100% - 44px);margin:4px 22px 0;border-collapse:collapse;font-weight:700;font-size:22px}
+.ls th{color:var(--dim);font-size:16px;font-weight:700;padding:4px 0}
+.ls td,.ls th{text-align:center;border-bottom:1px solid var(--line);padding:5px 0}
+.ls td:first-child,.ls th:first-child{text-align:left;width:120px}
+.ls td:first-child{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:24px}
+.ls td.now{color:var(--pencil)}
+.ls td.t{font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:26px}
+.line{margin:14px 22px 0;padding:10px 14px;background:var(--slate);border-left:6px solid var(--pencil);font-weight:700;font-size:23px;line-height:1.25}
+.lead{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 22px 0}
+.ld{background:var(--slate);border-top:5px solid var(--tc);padding:10px 14px}
+.ld small{display:block;color:var(--dim);font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase}
+.ld b{display:block;font-family:"Big Shoulders Display",sans-serif;font-weight:900;font-size:32px;line-height:1.05;margin-top:2px}
+.ld span{display:block;font-weight:700;font-size:20px;margin-top:2px}
+.ld span em{font-style:normal;color:var(--dim);font-weight:600}
+.stats{width:calc(100% - 44px);margin:12px 22px 20px;border-collapse:collapse;font-weight:700;font-size:21px}
+.stats td{padding:6px 0;border-bottom:1px solid var(--line)}
+.stats td:first-child{text-align:left;width:34%}
+.stats td:last-child{text-align:right;width:34%}
+.stats td.k{text-align:center;color:var(--dim);font-size:16px;letter-spacing:.04em;text-transform:uppercase}
+.stats td.w{color:var(--pencil)}
+.foot{display:flex;justify-content:space-between;padding:0 22px 14px;color:var(--dim);font-weight:600;font-size:15px}
+.msg{position:absolute;left:64px;top:64px;background:var(--slate);border-left:8px solid var(--chair);padding:10px 16px;font-weight:700;font-size:22px;display:none}
+.msg.on{display:block}
+</style>
+</head>
+<body>
+<div class="card" id="card"></div>
+<div class="msg" id="msg"></div>
+<script>
+const P = new URLSearchParams(location.search);
+const cfg = {
+  team:(P.get("team") || "BOS").toUpperCase(), event:P.get("event") || "", league:P.get("league") || "nba",
+  delay:Math.max(0, Math.min(120, +(P.get("delay") || 0))), pos:(P.get("pos") || "left").toLowerCase(),
+  preview:P.get("preview") === "1", show:P.get("show") || ""
+};
+document.body.classList.add("pos-" + cfg.pos);
+const BASE = `https://site.api.espn.com/apis/site/v2/sports/basketball/${cfg.league}`;
+const NQ = cfg.league === "mens-college-basketball" ? 2 : 4;
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const J = u => fetch(u + (u.includes("?") ? "&" : "?") + "_=" + Date.now(), { cache:"no-store" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+const ymd = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+function lum(hex){ const n = parseInt(hex.replace("#",""),16); const c = [(n>>16)&255,(n>>8)&255,n&255].map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)}); return .2126*c[0]+.7152*c[1]+.0722*c[2]; }
+function color(p, a){ const ok = h => h && /^[0-9a-f]{6}$/i.test(h); let c = ok(p) ? "#"+p : null; if (!c || lum(c) < .015) c = ok(a) ? "#"+a : "#1a5fa8"; return c; }
+const ordQ = n => n <= NQ ? (NQ === 2 ? ["1st half","2nd half"][n-1] : ["1st","2nd","3rd","4th"][n-1] + " quarter") : (n - NQ === 1 ? "overtime" : `${n - NQ}OT`);
+
+async function findEvent(){
+  if (cfg.event) return cfg.event;
+  const now = new Date();
+  for (const off of [0, -1]){
+    const d = new Date(now); d.setDate(now.getDate() + off);
+    try{
+      const sb = await J(`${BASE}/scoreboard?dates=${ymd(d)}`);
+      const ev = (sb.events || []).find(e => e.competitions[0].competitors.some(c => (c.team.abbreviation || "").toUpperCase() === cfg.team));
+      if (ev) return ev.id;
+    }catch(e){}
+  }
+  return null;
+}
+
+/* what kind of break is it? */
+function breakOf(sum){
+  const st = sum.header.competitions[0].status || {}, ty = st.type || {}, name = ty.name || "";
+  if (ty.state === "post") return { kind:"final", per:st.period };
+  if (/HALFTIME/.test(name)) return { kind:"half", per:st.period };
+  if (/END_PERIOD/.test(name)) return { kind:"end", per:st.period };
+  if (cfg.preview) return { kind: ty.state === "pre" ? "pre" : "end", per:Math.max(1, st.period || 1) };
+  return null;
+}
+
+function leaders(sum, side, comp){
+  const tid = String(comp.competitors.find(c => c.homeAway === side).team.id);
+  const tp = ((sum.boxscore && sum.boxscore.players) || []).find(x => String(x.team.id) === tid);
+  const st = tp && tp.statistics && tp.statistics[0]; if (!st) return null;
+  const L = (st.labels || st.names || []).map(x => String(x).toUpperCase());
+  const rows = (st.athletes || []).filter(a => a.stats && a.stats.length).map(a => { const o = { name:a.athlete.shortName || a.athlete.displayName }; L.forEach((l, i) => o[l] = a.stats[i]); return o; });
+  rows.sort((a, b) => (+b.PTS || 0) - (+a.PTS || 0) || (+b.REB || 0) - (+a.REB || 0));
+  return rows[0] || null;
+}
+function teamStats(sum, comp){
+  const out = {};
+  for (const t of (sum.boxscore && sum.boxscore.teams) || []){
+    const side = comp.competitors.find(c => String(c.team.id) === String(t.team.id)).homeAway, o = out[side] = {};
+    (t.statistics || []).forEach(x => o[x.name] = x.displayValue);
+  }
+  return out;
+}
+
+function render(sum){
+  const b = breakOf(sum), card = $("#card");
+  if (!b){ card.classList.remove("on"); return; }
+  const comp = sum.header.competitions[0], cs = { away:comp.competitors.find(c => c.homeAway === "away"), home:comp.competitors.find(c => c.homeAway === "home") };
+  const T = s => ({ abbr:cs[s].team.abbreviation, name:cs[s].team.shortDisplayName || cs[s].team.name, color:color(cs[s].team.color, cs[s].team.alternateColor), score:+cs[s].score || 0, ls:(cs[s].linescores || []).map(l => +(l.displayValue ?? l.value) || 0) });
+  const A = T("away"), H = T("home");
+  const title = b.kind === "final" ? "Final" : b.kind === "half" ? "Halftime" : b.kind === "pre" ? "Preview" : `End of the ${ordQ(b.per)}`;
+  const nq = Math.max(NQ, A.ls.length, H.ls.length);
+  const qn = i => i < NQ ? (NQ === 2 ? `H${i+1}` : `Q${i+1}`) : (i - NQ ? `${i - NQ + 1}OT` : "OT");
+  const just = b.per - 1, qa = A.ls[just], qh = H.ls[just];
+  // the line: who won the period just played, or the half, or the game
+  let line = "";
+  if (b.kind === "final"){
+    const w = A.score > H.score ? A : H, l = w === A ? H : A;
+    const best = A.ls.map((x, i) => ({ i, d:(w === A ? x - (H.ls[i] || 0) : (H.ls[i] || 0) - x) })).sort((x, y) => y.d - x.d)[0];
+    line = `${w.name} win by ${w.score - l.score}${best && best.d > 0 ? `. The ${ordQ(best.i + 1)} did it: ${w === A ? A.ls[best.i] : H.ls[best.i]}-${w === A ? H.ls[best.i] : A.ls[best.i]}.` : "."}`;
+  } else if (qa != null && qh != null){
+    const per = just;
+    if (b.kind === "half" && NQ === 4){
+      const ha = (A.ls[0] || 0) + (A.ls[1] || 0), hh = (H.ls[0] || 0) + (H.ls[1] || 0);
+      line = ha === hh ? `All square at ${ha} at the break.` : `${(ha > hh ? A : H).name} lead by ${Math.abs(ha - hh)} at the half. ${(qa > qh ? A : H).abbr} won the 2nd quarter ${Math.max(qa, qh)}-${Math.min(qa, qh)}.`;
+    } else {
+      line = qa === qh ? `The ${ordQ(per + 1)} finished level, ${qa}-${qh}.` : `${(qa > qh ? A : H).name} won the ${ordQ(per + 1)} ${Math.max(qa, qh)}-${Math.min(qa, qh)}.`;
+      const lead = A.score - H.score;
+      line += lead === 0 ? " Tied up." : ` ${(lead > 0 ? A : H).abbr} up ${Math.abs(lead)}.`;
+    }
+  }
+  const la = leaders(sum, "away", comp), lh = leaders(sum, "home", comp), TS = teamStats(sum, comp);
+  const ld = (l, t) => !l ? `<div class="ld" style="--tc:${t.color}"><small>${esc(t.abbr)} leader</small><b>–</b></div>` :
+    `<div class="ld" style="--tc:${t.color}"><small>${esc(t.abbr)} leader</small><b>${esc(l.name)}</b><span>${esc(l.PTS)} pts · ${esc(l.REB)} reb · ${esc(l.AST)} ast <em>· ${esc(l.FG)} FG</em></span></div>`;
+  const st = (k, lab, lowGood) => {
+    const a = TS.away && TS.away[k], h = TS.home && TS.home[k]; if (a == null || h == null) return "";
+    const na = parseFloat(a), nh = parseFloat(h), aw = lowGood ? na < nh : na > nh, hw = lowGood ? nh < na : nh > na;
+    const fmt = x => /Pct$/.test(k) ? x + "%" : x;
+    return `<tr><td class="${aw ? "w" : ""}">${esc(fmt(a))}</td><td class="k">${lab}</td><td class="${hw ? "w" : ""}">${esc(fmt(h))}</td></tr>`;
+  };
+  card.innerHTML = `
+    <div class="head"><div class="tag">SportsDesk</div><div class="title">${esc(title)}</div></div>
+    <div class="score">
+      <div class="tm" style="--tc:${A.color}"><i></i><div><b>${esc(A.abbr)}</b><span>${esc(A.name)}</span></div></div>
+      <div class="big">${A.score}<em>–</em>${H.score}</div>
+      <div class="tm h" style="--tc:${H.color}"><i></i><div><b>${esc(H.abbr)}</b><span>${esc(H.name)}</span></div></div>
+    </div>
+    <table class="ls"><tr><th></th>${Array.from({ length:nq }, (_, i) => `<th>${qn(i)}</th>`).join("")}<th>T</th></tr>
+      ${[A, H].map(t => `<tr><td>${esc(t.abbr)}</td>${Array.from({ length:nq }, (_, i) => `<td class="${i === just && b.kind !== "final" ? "now" : ""}">${t.ls[i] ?? ""}</td>`).join("")}<td class="t">${t.score}</td></tr>`).join("")}
+    </table>
+    ${line ? `<div class="line">${esc(line)}</div>` : ""}
+    <div class="lead">${ld(la, A)}${ld(lh, H)}</div>
+    <table class="stats">
+      <tr><td><b class="D" style="font-size:24px">${esc(A.abbr)}</b></td><td class="k"></td><td><b class="D" style="font-size:24px">${esc(H.abbr)}</b></td></tr>
+      ${st("fieldGoalPct", "FG %")}${st("threePointFieldGoalPct", "3PT %")}${st("totalRebounds", "Rebounds")}${st("assists", "Assists")}${st("turnovers", "Turnovers", true)}${st("pointsInPaint", "Paint pts")}
+    </table>
+    <div class="foot"><span>${esc(cfg.show || "Live call")}</span><span>Numbers from ESPN</span></div>`;
+  card.classList.add("on");
+}
+
+/* polling, with the same delay buffer as the scorebug */
+let ev = null; const snaps = []; let shown = null;
+async function tick(){
+  try{
+    if (!ev){ ev = await findEvent(); if (!ev){ if (cfg.preview){ $("#msg").textContent = `No ${cfg.team} game today or yesterday`; $("#msg").classList.add("on"); } return setTimeout(tick, 60000); } }
+    let sum = await J(`${BASE}/summary?event=${ev}`);
+    if (cfg.delay){
+      snaps.push({ t:Date.now(), sum });
+      const cut = Date.now() - cfg.delay * 1000;
+      while (snaps.length && snaps[0].t <= cut) shown = snaps.shift().sum;
+      if (!shown) return setTimeout(tick, 5000);
+      sum = shown;
+    }
+    render(sum);
+  }catch(e){ console.error(e); }
+  setTimeout(tick, 5000);
+}
+tick();
+</script>
+</body>
+</html>
